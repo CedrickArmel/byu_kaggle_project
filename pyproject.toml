@@ -8,6 +8,7 @@ requires-python = ">=3.10"
 dependencies = [
     "pandas (>=2.2.3,<3.0.0)",
     "numpy (>=2.2.4,<3.0.0)",
+    "torch (>=2.6.0,<2.7.0)",
 ]
 
 [build-system]
@@ -21,6 +22,17 @@ isort = "^6.0.1"
 matplotlib = "^3.10.1"
 pre-commit = "^4.2.0"
 black = "^25.1.0"
+
+[[tool.poetry.source]]
+name = "libtpu-wheels"
+url = "https://storage.googleapis.com/libtpu-wheels/index.html"
+priority = "explicit"
+
+
+[[tool.poetry.source]]
+name = "libtpu-releases"
+url = "https://storage.googleapis.com/libtpu-releases/index.html"
+priority = "explicit"
 
 [tool.pylint.format]
 max-line-length = "88"
