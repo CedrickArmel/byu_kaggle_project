@@ -2,10 +2,6 @@
 
 set -e  # Exit immediately on error
 
-# 🛠 System update and install sudo
-apt-get update && apt-get upgrade -y
-apt-get install sudo -y
-
 # 🐍 Install pyenv
 curl https://pyenv.run | bash
 
