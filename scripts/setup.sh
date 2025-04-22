@@ -37,11 +37,13 @@ echo "✅ TPU environment setup complete. Reload your shell with: source ~/.bash
 
 # 🗝 SSH key generation
 cat << 'EOF' >> ~/.ssh/config
+
 Host github.com
   AddKeysToAgent yes
   UseKeychain yes
   IdentityFile /kaggle/working/.ssh/id_ed25519
   IgnoreUnknown UseKeychain
+
 EOF
 
 echo "🔄 Reloading shell..."
