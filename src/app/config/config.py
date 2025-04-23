@@ -39,17 +39,17 @@ cfg.resume_from = None
 cfg.save_weights_only = False
 
 ## Dataset/DataLoader
-cfg.batch_size = 2
+cfg.batch_size = 4
 cfg.batch_size_val = 2
 cfg.drop_last = False
 cfg.pin_memory = False
 cfg.val_pin_memory = False
 cfg.test_pin_memory = False
-cfg.num_workers = 0
+cfg.num_workers = 4
 cfg.shuffle = False
-cfg.train_sub_epochs = 2
+cfg.train_sub_epochs = 20
 cfg.val_sub_epochs = 1
-cfg.prefetch_factor = 30
+cfg.prefetch_factor = 2
 
 ## Metrics
 cfg.dt_multiplier = 1
