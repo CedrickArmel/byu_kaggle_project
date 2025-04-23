@@ -1,13 +1,45 @@
+# MIT License
+#
+# Copyright (c) 2024, Yebouet Cédrick-Armel
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+from types import SimpleNamespace
+from typing import Any
+
 import torch
 import torch.nn.functional as F
+from monai.networks.nets.flexible_unet import (
+    FLEXUNET_BACKBONE,
+    SegmentationHead,
+    UNetDecoder,
+)
 from torch import nn
 from torch.distributions import Beta
-from monai.networks.nets.flexible_unet import SegmentationHead, UNetDecoder, FLEXUNET_BACKBONE
 
 
-class PatchedUNetDecoder(UNetDecoder):
+class PatchedUNetDecoder(UNetDecoder):  # type: ignore[misc]
     """add functionality to output all feature maps"""
-    def forward(self, features: list[torch.Tensor], skip_connect: int = 4):
+
+    def forward(
+        self, features: "list[torch.Tensor]", skip_connect: "int" = 4
+    ) -> "list[torch.Tensor]":
         skips = features[:-1][::-1]
         features = features[1:][::-1]
 
@@ -24,23 +56,26 @@ class PatchedUNetDecoder(UNetDecoder):
         return out
 
 
-class FlexibleUNet(nn.Module):
+class FlexibleUNet(nn.Module):  # type: ignore[misc]
     """
-    A flexible implementation of UNet-like encoder-decoder architecture. 
+    A flexible implementation of UNet-like encoder-decoder architecture.
     (Adjusted to support PatchDecoder and multi segmentation heads)
     """
-    
+
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
         backbone: str,
         pretrained: bool = False,
-        decoder_channels: tuple = (256, 128, 64, 32, 16),
+        decoder_channels: tuple[int, ...] = (256, 128, 64, 32, 16),
         spatial_dims: int = 2,
-        norm: str | tuple = ("batch", {"eps": 1e-3, "momentum": 0.1}),
-        act: str | tuple = ("relu", {"inplace": True}),
-        dropout: float | tuple = 0.0,
+        norm: str | tuple[str, dict[str, Any]] = (
+            "batch",
+            {"eps": 1e-3, "momentum": 0.1},
+        ),
+        act: str | tuple[str, dict[str, Any]] = ("relu", {"inplace": True}),
+        dropout: float | tuple[str, dict[str, Any]] = 0.0,
         decoder_bias: bool = False,
         upsample: str = "nontrainable",
         pre_conv: str = "default",
@@ -97,29 +132,39 @@ class FlexibleUNet(nn.Module):
         self.backbone = backbone
         self.spatial_dims = spatial_dims
         encoder_parameters = encoder["parameter"]
-        
+
         if not (
             ("spatial_dims" in encoder_parameters)
             and ("in_channels" in encoder_parameters)
             and ("pretrained" in encoder_parameters)
         ):
-            raise ValueError("The backbone init method must have spatial_dims, in_channels and pretrained parameters.")
-        
+            raise ValueError(
+                "The backbone init method must have spatial_dims, in_channels and pretrained parameters."
+            )
+
         encoder_feature_num = encoder["feature_number"]
-        
+
         if encoder_feature_num > 5:
-            raise ValueError("Flexible unet can only accept no more than 5 encoder feature maps.")
+            raise ValueError(
+                "Flexible unet can only accept no more than 5 encoder feature maps."
+            )
 
         decoder_channels = decoder_channels[:encoder_feature_num]
-        
+
         self.skip_connect = encoder_feature_num - 1
-        
-        encoder_parameters.update({"spatial_dims": spatial_dims, "in_channels": in_channels, "pretrained": pretrained})
+
+        encoder_parameters.update(
+            {
+                "spatial_dims": spatial_dims,
+                "in_channels": in_channels,
+                "pretrained": pretrained,
+            }
+        )
         encoder_channels = tuple([in_channels] + list(encoder["feature_channel"]))
         encoder_type = encoder["type"]
         self.encoder = encoder_type(**encoder_parameters)
         print(decoder_channels)
-        
+
         self.decoder = PatchedUNetDecoder(
             spatial_dims=spatial_dims,
             encoder_channels=encoder_channels,
@@ -135,108 +180,147 @@ class FlexibleUNet(nn.Module):
             is_pad=is_pad,
         )
         # Instanciate a segmentation head for each feature maps outputed by PatchedUNetDecoder
-        self.segmentation_heads = nn.ModuleList([SegmentationHead(
-            spatial_dims=spatial_dims,
-            in_channels=decoder_channel,
-            out_channels=out_channels + 1,
-            kernel_size=3,
-            act=None,
-        ) for decoder_channel in decoder_channels[:-1]])
+        self.segmentation_heads = nn.ModuleList(
+            [
+                SegmentationHead(
+                    spatial_dims=spatial_dims,
+                    in_channels=decoder_channel,
+                    out_channels=out_channels + 1,
+                    kernel_size=3,
+                    act=None,
+                )
+                for decoder_channel in decoder_channels[:-1]
+            ]
+        )
 
-    def forward(self, inputs: torch.Tensor):
+    def forward(self, inputs: torch.Tensor) -> "list[torch.Tensor]":
+        """
+        Performs a forward pass through the model.
+        Args:
+            inputs (torch.Tensor): The input tensor to the model.
+        Returns:
+            list[torch.Tensor]: A list of tensors representing the segmented
+            feature maps produced by the segmentation heads.
+        """
         x = inputs
         enc_out = self.encoder(x)
         decoder_out = self.decoder(enc_out, self.skip_connect)[1:-1]
-        x_seg = [self.segmentation_heads[i](decoder_out[i]) for i in range(len(decoder_out))]  # segment each feature map
+        x_seg = [
+            self.segmentation_heads[i](decoder_out[i]) for i in range(len(decoder_out))
+        ]  # segment each feature map
         return x_seg
 
 
-def count_parameters(model):
+def count_parameters(model: "nn.Module") -> "int":
+    """Count the number of trainable parameters in a model."""
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-def human_format(num):
-    num = float('{:.3g}'.format(num))
+def human_format(num: "float") -> str:
+    """Convert a number to a human-readable format with SI prefixes."""
+    num = float("{:.3g}".format(num))
     magnitude = 0
     while abs(num) >= 1000:
         magnitude += 1
         num /= 1000.0
-    return '{}{}'.format('{:f}'.format(num).rstrip('0').rstrip('.'), ['', 'K', 'M', 'B', 'T'][magnitude])
+    return "{}{}".format(
+        "{:f}".format(num).rstrip("0").rstrip("."), ["", "K", "M", "B", "T"][magnitude]
+    )
 
 
-class Mixup(nn.Module):
-    def __init__(self, mix_beta, mixadd=False):
+class Mixup(nn.Module):  # type: ignore[misc]
+    """Mixup augmentation for 3D data."""
+
+    def __init__(self, mix_beta: "float", mixadd: "bool" = False) -> None:
+        """Initialize the Mixup module."""
         super(Mixup, self).__init__()
         self.beta_distribution = Beta(mix_beta, mix_beta)
         self.mixadd = mixadd
 
-    def forward(self, X, Y, Z=None):
+    def forward(
+        self, X: "torch.Tensor", Y: "torch.Tensor", Z: "torch.Tensor | None" = None
+    ) -> "tuple[torch.Tensor, ...]":
+        """Apply mixup augmentation to the input data."""
         bs = X.shape[0]
-        n_dims = len(X.shape)
         perm = torch.randperm(bs)
         coeffs = self.beta_distribution.rsample(torch.Size((bs,))).to(X.device)
-        X_coeffs = coeffs.view((-1,) + (1,)*(X.ndim-1))
-        Y_coeffs = coeffs.view((-1,) + (1,)*(Y.ndim-1))
-        X = X_coeffs * X + (1-X_coeffs) * X[perm]
+        X_coeffs = coeffs.view((-1,) + (1,) * (X.ndim - 1))
+        Y_coeffs = coeffs.view((-1,) + (1,) * (Y.ndim - 1))
+        X = X_coeffs * X + (1 - X_coeffs) * X[perm]
 
         if self.mixadd:
             Y = (Y + Y[perm]).clip(0, 1)
         else:
-            Y = Y_coeffs * Y + (1 - Y_coeffs) * Y[perm]    
+            Y = Y_coeffs * Y + (1 - Y_coeffs) * Y[perm]
         if Z:
             return X, Y, Z
         return X, Y
 
 
-class DenseCrossEntropy(nn.Module):
-    def __init__(self, class_weights=None):
+class DenseCrossEntropy(nn.Module):  # type: ignore[misc]
+    def __init__(self, class_weights: "torch.Tensor | None" = None) -> None:
+        """Initialize the DenseCrossEntropy loss function."""
         super(DenseCrossEntropy, self).__init__()
         self.class_weights = class_weights
-    
-    def forward(self, x, target):
+
+    def forward(
+        self, x: "torch.Tensor", target: "torch.Tensor"
+    ) -> "tuple[torch.Tensor, torch.Tensor]":
         x = x.float()
         target = target.float()
         logprobs = torch.nn.functional.log_softmax(x, dim=1, dtype=torch.float)
         loss = -logprobs * target
-        class_losses = loss.mean((0,2,3,4))
+        class_losses = loss.mean((0, 2, 3, 4))
         if self.class_weights is not None:
-            loss = (class_losses * self.class_weights.to(class_losses.device)).sum() #/ class_weights.sum() 
+            loss = (
+                class_losses * self.class_weights.to(class_losses.device)
+            ).sum()  # / class_weights.sum()
         else:
-            
             loss = class_losses.sum()
         return loss, class_losses
 
 
-def to_ce_target(y):
-
+def to_ce_target(y: "torch.Tensor") -> "torch.Tensor":
+    """Convert the target to a format suitable for cross-entropy loss."""
     y_bg = 1 - y.sum(1, keepdim=True).clamp(0, 1)
-    y = torch.cat([y,y_bg], 1)
+    y = torch.cat([y, y_bg], 1)
     y = y / y.sum(1, keepdim=True)
     return y
 
 
-class Net(nn.Module):
+class Net(nn.Module):  # type: ignore[misc]
     """Adapted from ChristofHenkel/kaggle-cryoet-1st-place-segmentation/models
     to support sub_batches and avoid OOM errors.
     """
-    def __init__(self, cfg):
+
+    def __init__(self, cfg: "SimpleNamespace") -> None:
+        """Initialize the Net module."""
         super(Net, self).__init__()
         self.cfg = cfg
         self.backbone = FlexibleUNet(**cfg.backbone_args)
         self.mixup = Mixup(cfg.mixup_beta)
-        print(f'Net parameters: {human_format(count_parameters(self))}')
+        print(f"Net parameters: {human_format(count_parameters(self))}")
         self.lvl_weights = torch.from_numpy(cfg.lvl_weights)
-        self.loss_fn = DenseCrossEntropy(class_weights=torch.from_numpy(cfg.class_weights))
+        self.loss_fn = DenseCrossEntropy(
+            class_weights=torch.from_numpy(cfg.class_weights)
+        )
 
-    def forward(self, batch):
-        bs = self.cfg.virt_sub_batch_size if self.training else self.cfg.virt_eval_sub_batch_size
-        
+    def forward(self, batch: "dict[str, Any]") -> "dict[str, Any]":
+        """Perform a forward pass through the model."""
+        bs = (
+            self.cfg.virt_sub_batch_size
+            if self.training
+            else self.cfg.virt_eval_sub_batch_size
+        )
+
         if bs == -1:
             sub_batches = [batch]
         else:
-            sub_batches = [{key: value[i:i + bs] for key, value in batch.items()} 
-                           for i in range(0, len(batch['input']), bs)]
-        
+            sub_batches = [
+                {key: value[i : i + bs] for key, value in batch.items()}
+                for i in range(0, len(batch["input"]), bs)
+            ]
+
         outputs = {}
         all_logits = []
         all_losses = []
@@ -244,12 +328,12 @@ class Net(nn.Module):
         has_target = "target" in batch  # Check only once
 
         for b in sub_batches:
-            x = b['input'].to(torch.float32)
+            x = b["input"].to(torch.float32)
             y = b["target"].to(torch.float32) if has_target else None
 
             if self.training and has_target and torch.rand(1)[0] < self.cfg.mixup_p:
                 x, y = self.mixup(x, y)
-                
+
             out = self.backbone(x)
 
             if not self.training:
@@ -257,22 +341,27 @@ class Net(nn.Module):
 
             if has_target:
                 ys = [F.adaptive_max_pool3d(y, o.shape[-3:]) for o in out]
-                loss_values = torch.stack([self.loss_fn(out[i], to_ce_target(ys[i]))[0] for i in range(len(out))])
+                loss_values = torch.stack(
+                    [
+                        self.loss_fn(out[i], to_ce_target(ys[i]))[0]
+                        for i in range(len(out))
+                    ]
+                )
                 lvl_weights = self.lvl_weights.to(loss_values.device)
                 weighted_loss = (loss_values * lvl_weights).sum() / lvl_weights.sum()
                 all_losses.append(weighted_loss)
 
         if has_target:
-            outputs['loss'] = torch.stack(all_losses).mean()
+            outputs["loss"] = torch.stack(all_losses).mean()
 
         if not self.training:
             outputs["logits"] = torch.cat(all_logits, dim=0)
-            if 'location' in batch:
-                outputs["location"] = batch['location']
-            if 'scale' in batch:
-                outputs["scale"] = batch['scale']
-            if "tomo_id" in batch:
-                outputs["id"] = batch['id']
+            if "location" in batch:
+                outputs["location"] = batch["location"]
+            if "scale" in batch:
+                outputs["scale"] = batch["scale"]
+            if "id" in batch:
+                outputs["id"] = batch["id"]
             if "dims" in batch:
-                outputs["dims"] = batch['dims']
+                outputs["dims"] = batch["dims"]
         return outputs

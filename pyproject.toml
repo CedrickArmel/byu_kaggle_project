@@ -1,15 +1,18 @@
 [project]
-name = "byu-kaggle-project"
+name = "app"
 version = "0.1.0"
 description = ""
 authors = [{ name = "YEBOUET Cédrick-Armel" }]
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
     "pandas (>=2.2.3,<3.0.0)",
-    "numpy (>=2.2.4,<3.0.0)",
     "torch (>=2.6.0,<2.7.0)",
+    "monai (>=1.4.0,<2.0.0)",
+    "scipy (>=1.15.2,<2.0.0)",
 ]
+packages = [{ include = "app", from = "src" }]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
@@ -23,11 +26,13 @@ matplotlib = "^3.10.1"
 pre-commit = "^4.2.0"
 black = "^25.1.0"
 
+[tool.poetry.scripts]
+train = 'app.launcher'
+
 [[tool.poetry.source]]
 name = "libtpu-wheels"
 url = "https://storage.googleapis.com/libtpu-wheels/index.html"
 priority = "explicit"
-
 
 [[tool.poetry.source]]
 name = "libtpu-releases"
@@ -36,3 +41,11 @@ priority = "explicit"
 
 [tool.pylint.format]
 max-line-length = "88"
+[tool.pylint.messages-control]
+disable = []
+
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"
