@@ -8,6 +8,8 @@ curl https://pyenv.run | bash
 # 🧙 Install Poetry
 curl -sSL https://install.python-poetry.org | python3 -
 
+git config --global user.name "Cédrick-Armel YEBOUET"
+git config --global user.email "35418979+CedrickArmel@users.noreply.github.com"
 
 # 📂 Environment cleanup and TPU setup — append to ~/.bashrc
 cat << 'EOF' >> ~/.bashrc
@@ -20,7 +22,7 @@ done
 # Set environment variables for TPU
 export ISTPUVM=1
 export PJRT_DEVICE=TPU
-export TF_CPP_MIN_LOG_LEVEL=0
+export TF_CPP_MIN_LOG_LEVEL=2
 export TPU_ACCELERATOR_TYPE=v3-8
 export TPU_CHIPS_PER_HOST_BOUNDS=2,2,1
 export TPU_HOST_BOUNDS=1,1,1
@@ -52,6 +54,8 @@ Host github.com
   IdentityFile /kaggle/working/.ssh/id_ed25519
 
 EOF
+eval "$(ssh-agent -s)"
+chmod 600 /kaggle/working/.ssh/id_ed25519
 
 echo "🔄 Reloading shell..."
 source ~/.bashrc
