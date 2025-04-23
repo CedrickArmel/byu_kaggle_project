@@ -39,7 +39,8 @@ import torch_xla.runtime as xr
 import torch_xla.test.test_utils as tu
 from metrics import calc_metric
 from processings.post_processing import post_process_pipeline
-from torch.nn.parallel import DistributedDataParallel as DDP
+
+# from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm.auto import tqdm
 from utils import (
     compute_grad_metrics,
@@ -137,7 +138,8 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
 
     # Metrics logger
     xm.master_print("Metrics logger...")
-    cfg.train_writer, cfg.val_writer = get_metrics_logger(cfg)
+    if xm.is_master_ordinal():
+        cfg.train_writer, cfg.val_writer = get_metrics_logger(cfg)
 
     # Load data
     xm.master_print("Load data...")
@@ -266,24 +268,25 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
                         cfg.epoch_val_metrics[key].append(value)
 
                     # Closure and logging
-                    xm.add_step_closure(
-                        tu.write_to_summary,
-                        args=(cfg.val_writer, cfg.curr_step, val_metrics, False),
-                        run_async=cfg.async_closure,
-                    )
+                    if xm.is_master_ordinal():
+                        xm.add_step_closure(
+                            tu.write_to_summary,
+                            args=(cfg.val_writer, cfg.curr_step, val_metrics, False),
+                            run_async=cfg.async_closure,
+                        )
 
                     # Checkpointing best model
                     if val_score > cfg.best_val_score:
                         cfg.best_val_score = val_score
                         xm.wait_device_ops()
-                        checkpoint = create_checkpoint(cfg, model, optimizer, scheduler)  # type: ignore[arg-type]
-                        xm.save(
-                            checkpoint,
-                            os.path.join(cfg.session_dir, "best_model.pth"),
-                            master_only=True,
-                            global_master=True,
-                        )
                         if xm.is_master_ordinal():
+                            checkpoint = create_checkpoint(cfg, model, optimizer, scheduler)  # type: ignore[arg-type]
+                            xm.save(
+                                checkpoint,
+                                os.path.join(cfg.session_dir, "best_model.pth"),
+                                master_only=True,
+                                global_master=True,
+                            )
                             csv_path = os.path.join(
                                 cfg.session_dir,
                                 f"val_df_step_{cfg.curr_step}_proc_{cfg.rank}.csv",
@@ -299,19 +302,20 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
                     and not cfg.saved_best_model
                 ):
                     xm.wait_device_ops()
-                    checkpoint = create_checkpoint(cfg, model, optimizer, scheduler)  # type: ignore[arg-type]
-                    xm.save(
-                        checkpoint,
-                        os.path.join(cfg.session_dir, f"chkp_{cfg.curr_step}.pth"),
-                        master_only=True,
-                        global_master=True,
-                    )
-                    if pred_df is not None and xm.is_master_ordinal():
-                        csv_path = os.path.join(
-                            cfg.session_dir,
-                            f"val_df_step_{cfg.curr_step}_proc_{cfg.rank}.csv",
+                    if xm.is_master_ordinal():
+                        checkpoint = create_checkpoint(cfg, model, optimizer, scheduler)  # type: ignore[arg-type]
+                        xm.save(
+                            checkpoint,
+                            os.path.join(cfg.session_dir, f"chkp_{cfg.curr_step}.pth"),
+                            master_only=True,
+                            global_master=True,
                         )
-                        pred_df.to_csv(csv_path, index=False)
+                        if pred_df is not None:
+                            csv_path = os.path.join(
+                                cfg.session_dir,
+                                f"val_df_step_{cfg.curr_step}_proc_{cfg.rank}.csv",
+                            )
+                            pred_df.to_csv(csv_path, index=False)
                     xm.rendezvous("checkpoint_state")
                     cfg.saved_best_model = False
 
@@ -346,16 +350,17 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
                     or cfg.curr_step % cfg.training_steps == 0
                 ):
                     # training closure and logging
-                    xm.add_step_closure(
-                        tu.write_to_summary,
-                        args=(
-                            cfg.train_writer,
-                            cfg.curr_step,
-                            train_metrics,
-                            cfg.write_xla_metrics,
-                        ),
-                        run_async=cfg.async_closure,
-                    )
+                    if xm.is_master_ordinal():
+                        xm.add_step_closure(
+                            tu.write_to_summary,
+                            args=(
+                                cfg.train_writer,
+                                cfg.curr_step,
+                                train_metrics,
+                                cfg.write_xla_metrics,
+                            ),
+                            run_async=cfg.async_closure,
+                        )
 
                     # Update progress bar
                     xm.wait_device_ops()
@@ -392,19 +397,21 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
             else 0
         )
         xm.wait_device_ops()
-        checkpoint = create_checkpoint(cfg, model, optimizer, scheduler)  # type: ignore[arg-type]
-        xm.save(
-            checkpoint,
-            os.path.join(cfg.session_dir, "last_epoch_state.pth"),
-            master_only=True,
-            global_master=True,
-        )
+        if xm.is_master_ordinal():
+            checkpoint = create_checkpoint(cfg, model, optimizer, scheduler)  # type: ignore[arg-type]
+            xm.save(
+                checkpoint,
+                os.path.join(cfg.session_dir, "last_epoch_state.pth"),
+                master_only=True,
+                global_master=True,
+            )
         pbar.set_description(
             f"epoch {cfg.curr_epoch}/{cfg.epochs} |"
             f"avg_loss: {losses_mean:.2f} |"
             f"avg_val_loss: {val_losses_mean:.2f} |"
             f"avg_val_score: {scores_mean:.2f}"
         )
-        tu.close_summary_writer(cfg.train_writer)
-        tu.close_summary_writer(cfg.val_writer)
+        if xm.is_master_ordinal():
+            tu.close_summary_writer(cfg.train_writer)
+            tu.close_summary_writer(cfg.val_writer)
         xm.rendezvous("last_epoch_state")
