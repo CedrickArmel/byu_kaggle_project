@@ -338,8 +338,8 @@ def get_metrics_logger(
     cfg: "SimpleNamespace",
 ) -> "tuple[tu.SummaryWriter, tu.SummaryWriter]":
     """Creates and returns summary writers for training and validation metrics logging."""
-    train_log_dir = os.path.join("logs", cfg.start_time, "train")
-    val_log_dir = os.path.join("logs", cfg.start_time, "eval")
+    train_log_dir = os.path.join(cfg.submission_dir, "logs", cfg.start_time, "train")
+    val_log_dir = os.path.join(cfg.submission_dir, "logs", cfg.start_time, "eval")
     return tu.get_summary_writer(train_log_dir), tu.get_summary_writer(val_log_dir)
 
 

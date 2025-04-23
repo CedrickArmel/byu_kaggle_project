@@ -91,12 +91,12 @@ cfg.sgd_nesterov = (True,)
 cfg.weight_decay = 0.0
 
 # Paths
-cfg.accelerate_dir = "./accelerate"
+cfg.accelerate_dir = "/kaggle/working/accelerate"
 cfg.data_folder = "/kaggle/input/byu-locating-bacterial-flagellar-motors-2025"
 cfg.df_path = (
     "/kaggle/input/drx75c-byu-ds01-folded-tomograms/byu_folded_tomograms_seed57.csv"
 )
-cfg.output_dir = f"./{cfg.backbone}"
+cfg.output_dir = f"/kaggle/working/{cfg.backbone}"
 cfg.submission_dir = "/kaggle/working"
 
 ## Scheduler
@@ -113,12 +113,12 @@ cfg.async_closure = False
 
 ## Training
 cfg.best_th = 0.5
-cfg.closure_steps = 10
-cfg.chkpt_step = 400
+cfg.closure_steps = 2
+cfg.chkpt_step = 20
 cfg.compile_model = True
 cfg.epochs = 10
 cfg.epochs_step = None
-cfg.eval_steps = 200
+cfg.eval_steps = 10
 cfg.fold = 0
 cfg.last_score = 0.0
 cfg.milestones = None

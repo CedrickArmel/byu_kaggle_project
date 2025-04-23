@@ -20,7 +20,7 @@ done
 # Set environment variables for TPU
 export ISTPUVM=1
 export PJRT_DEVICE=TPU
-export TF_CPP_MIN_LOG_LEVEL=2
+export TF_CPP_MIN_LOG_LEVEL=0
 export TPU_ACCELERATOR_TYPE=v3-8
 export TPU_CHIPS_PER_HOST_BOUNDS=2,2,1
 export TPU_HOST_BOUNDS=1,1,1
