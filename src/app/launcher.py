@@ -35,9 +35,14 @@ def _mp_fn(index: "int", cfg: "SimpleNamespace", model: "nn.Module") -> None:
     trainer(cfg, model)
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Launcher"""
     model = Net(cfg)
     if cfg.pretrained:
         for param in model.backbone.encoder.parameters():
             param.requires_grad = False
     xla.launch(_mp_fn, args=(cfg, model))
+
+
+if __name__ == "__main__":
+    main()

@@ -27,7 +27,7 @@ pre-commit = "^4.2.0"
 black = "^25.1.0"
 
 [tool.poetry.scripts]
-train = 'app.launcher'
+train = 'app.launcher:main'
 
 [[tool.poetry.source]]
 name = "libtpu-wheels"
