@@ -120,6 +120,7 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
         model (torch.nn.Module): The model to train.
     """
     # Initialization
+    xm.master_print("Initialisation...")
     cfg.start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     cfg.session_dir = os.path.join(
         cfg.output_dir, f"seed_{cfg.seed}", f"fold{cfg.fold}", f"{cfg.start_time}"
@@ -135,9 +136,11 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
     xla.manual_seed(cfg.seed, device=cfg.device)
 
     # Metrics logger
+    xm.master_print("Metrics logger...")
     cfg.train_writer, cfg.val_writer = get_metrics_logger(cfg)
 
     # Load data
+    xm.master_print("Load data...")
     cfg.train_df, cfg.val_df = get_data(cfg)
     train_loader, val_loader = get_data_loaders(cfg)  # type: ignore[misc]
     cfg.n_samples = len(train_loader.dataset)  # type: ignore[arg-type]
@@ -145,17 +148,23 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
     cfg.lr = cfg.lr * cfg.world_size
 
     # Model and optimizer
+    xm.master_print("Model and optimizer...")
     optimizer = get_optimizer(cfg, model)
     scheduler = get_scheduler(cfg, optimizer, cfg.n_samples)  # type: ignore[arg-type]
     model = model.to(cfg.device)
 
     # Distributed Data Parallel setting
+    xm.master_print("Distributed Data Parallel setting...")
     xm.broadcast_master_param(model)
+    xm.master_print("Broadcasted model...")
     model = DDP(model, find_unused_parameters=True, gradient_as_bucket_view=True)
+    xm.master_print("DDPed model...")
     train_device_loader = pl.MpDeviceLoader(train_loader, cfg.device)
     val_device_loader = pl.MpDeviceLoader(val_loader, cfg.device)
+    xm.master_print("Set device load...")
 
     # Training loop vars initialization
+    xm.master_print("Training loop vars initialization...")
     cfg.curr_epoch = 0
     cfg.curr_step = 0
     cfg.best_val_score = -1
@@ -163,6 +172,7 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
     cfg.saved_best_model = False
 
     # Training loop
+    xm.master_print("Training loop...")
     for epoch in range(cfg.epochs):
         cfg.curr_epoch = epoch + 1
         cfg.epoch_metrics = defaultdict(lambda: [])
@@ -177,6 +187,7 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
 
         with pbar:
             for batch in train_device_loader:
+                xm.master_print("starting batch training...")
                 cfg.curr_step += 1
 
                 # Train one step

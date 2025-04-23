@@ -28,6 +28,10 @@ import numpy as np
 
 cfg = SimpleNamespace(**{})
 
+# Mode
+cfg.train = True
+cfg.tpu = True
+
 ## Checkpointing
 cfg.load_state = False
 cfg.save_checkpoint = True
@@ -41,10 +45,11 @@ cfg.drop_last = False
 cfg.pin_memory = False
 cfg.val_pin_memory = False
 cfg.test_pin_memory = False
-cfg.num_workers = 10
+cfg.num_workers = 30
 cfg.shuffle = False
 cfg.train_sub_epochs = 2
 cfg.val_sub_epochs = 1
+cfg.prefetch_factor = 1
 
 ## Metrics
 cfg.dt_multiplier = 1

@@ -7,11 +7,11 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
-    "libtpu (>=0.0.13,<0.0.14)",
     "torch (>=2.6.0,<2.7.0)",
     "torch-xla (>=2.6.1,<2.7.0)",
     "scipy (>=1.15.2,<2.0.0)",
     "monai[all] (>=1.4.0,<1.5.0)",
+    "libtpu (==0.0.7.1)",
 ]
 packages = [{ include = "app", from = "src" }]
 
@@ -40,6 +40,8 @@ name = "libtpu-releases"
 url = "https://storage.googleapis.com/libtpu-releases/index.html"
 priority = "explicit"
 
+[tool.poetry.dependencies]
+libtpu = { source = "libtpu-wheels" }
 [tool.pylint.format]
 max-line-length = "88"
 

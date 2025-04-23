@@ -2263,14 +2263,19 @@ test = ["pytest (>=7.4)", "pytest-cov (>=4.1)"]
 
 [[package]]
 name = "libtpu"
-version = "0.0.13"
-description = "libtpu is the core library that enables machine learning frameworks like JAX, PyTorch, and TensorFlow to execute models on Google Cloud TPUs. It provides core functionality for compilation, inter-chip communication (ICI), and runtime execution, and includes a set of SDK primitives for direct TPU interaction and deployment. Learn more about Cloud TPUs at https://cloud.google.com/tpu."
+version = "0.0.7.1"
+description = "Wrapper for the libtpu library."
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "libtpu-0.0.13-py3-none-manylinux_2_31_x86_64.whl", hash = "sha256:2b4fcd3b902433ef2c22760a3a13b1474491bb4daf88a2670c6c72b295ebe750"},
+    {file = "libtpu-0.0.7.1-py3-none-linux_x86_64.whl", hash = "sha256:20f5913e188182c53e25980410891fb99c95518c1645b90321db3438c6820aae"},
 ]
+
+[package.source]
+type = "legacy"
+url = "https://storage.googleapis.com/libtpu-wheels/index.html"
+reference = "libtpu-wheels"
 
 [[package]]
 name = "lmdb"
@@ -6125,4 +6130,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10"
-content-hash = "1149d7faef2b0225f431da2a14a8fda78c5c30479c13417499aec24763102f89"
+content-hash = "3549d812638b379dc2349c1f4e623cbacf8f29e41be39dc9b8f49fed3f49e636"
