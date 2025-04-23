@@ -45,11 +45,11 @@ cfg.drop_last = False
 cfg.pin_memory = False
 cfg.val_pin_memory = False
 cfg.test_pin_memory = False
-cfg.num_workers = 4
+cfg.num_workers = 0
 cfg.shuffle = False
-cfg.train_sub_epochs = 20
+cfg.train_sub_epochs = 2
 cfg.val_sub_epochs = 1
-cfg.prefetch_factor = 2
+cfg.prefetch_factor = None
 
 ## Metrics
 cfg.dt_multiplier = 1

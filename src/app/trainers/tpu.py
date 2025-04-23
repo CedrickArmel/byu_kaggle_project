@@ -244,10 +244,10 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
                     # Predictions thresholding and metrics
                     pred_df = pd.DataFrame(
                         predictions.cpu().numpy(),
-                        columns=["z", "y", "x", "conf", "ids"],
+                        columns=["z", "y", "x", "conf", "id"],
                     )
                     pred_df = pred_df.merge(
-                        val_loader.dataset.tomo_mapping, on="ids", how="inner"  # type: ignore[union-attr]
+                        val_loader.dataset.tomo_mapping, on="id", how="inner"  # type: ignore[union-attr]
                     )
                     val_score, best_th = calc_metric(
                         cfg, pred_df.copy(), cfg.val_df.copy()

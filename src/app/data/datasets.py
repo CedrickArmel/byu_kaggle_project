@@ -206,7 +206,7 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
         """
         tomo_id: "str" = self.tomo_list[idx // self.sub_epochs]
         num_tomo_idx: "int" = self.tomo_mapping.loc[
-            self.tomo_mapping.tomo_id == tomo_id, "idx"
+            self.tomo_mapping.tomo_id == tomo_id, "id"
         ].iloc[0]
         tomogram: "torch.Tensor" = self.load_tomogram(tomo_id)
         s: "torch.Size" = tomogram.shape
