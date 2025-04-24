@@ -141,6 +141,8 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
     if xm.is_master_ordinal():
         cfg.train_writer, cfg.val_writer = get_metrics_logger(cfg)
 
+    xm.wait_device_ops()
+
     # Load data
     xm.master_print("Load data...")
     cfg.train_df, cfg.val_df = get_data(cfg)
@@ -155,6 +157,8 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
     scheduler = get_scheduler(cfg, optimizer, cfg.n_samples)  # type: ignore[arg-type]
     model = model.to(cfg.device)
 
+    xm.wait_device_ops()
+
     # Distributed Data Parallel setting
     xm.master_print("Distributed Data Parallel setting...")
     xm.broadcast_master_param(model)
@@ -165,6 +169,8 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
     val_device_loader = pl.MpDeviceLoader(val_loader, cfg.device)
     xm.master_print("Set device load...")
 
+    xm.wait_device_ops()
+
     # Training loop vars initialization
     xm.master_print("Training loop vars initialization...")
     cfg.curr_epoch = 0
@@ -174,6 +180,7 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
     cfg.saved_best_model = False
 
     # Training loop
+    xm.rendez_vous("sync_before_training")
     xm.master_print("Training loop...")
     for epoch in range(cfg.epochs):
         cfg.curr_epoch = epoch + 1
