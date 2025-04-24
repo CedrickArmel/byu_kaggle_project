@@ -43,20 +43,8 @@ eval "$(pyenv virtualenv-init -)"
 # Poetry in PATH
 export PATH="/root/.local/bin:$PATH"
 
-# SSH agent
-eval "$(ssh-agent -s)"
-
 EOF
 echo "✅ TPU environment setup complete. Reload your shell with: source ~/.bashrc"
-
-# 🗝 SSH key generation
-cat << 'EOF' >> ~/.ssh/config
-
-Host github.com
-  AddKeysToAgent yes
-  IdentityFile /kaggle/working/.ssh/id_ed25519
-
-EOF
 
 echo "🔄 Reloading shell..."
 source ~/.bashrc
@@ -64,8 +52,5 @@ source ~/.bashrc
 echo "🔄 Sync environment..."
 pyenv virtualenv system byu_project
 poetry sync
-
-echo "🔄 Securing SSH key ..."
-chmod 600 /kaggle/working/.ssh/id_ed25519
 
 echo "✅ Setup completed!"
