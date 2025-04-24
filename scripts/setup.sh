@@ -8,8 +8,6 @@ curl https://pyenv.run | bash
 # 🧙 Install Poetry
 curl -sSL https://install.python-poetry.org | python3 -
 
-git config --global user.name "Cédrick-Armel YEBOUET"
-git config --global user.email "35418979+CedrickArmel@users.noreply.github.com"
 
 # 📂 Environment cleanup and TPU setup — append to ~/.bashrc
 cat << 'EOF' >> ~/.bashrc
