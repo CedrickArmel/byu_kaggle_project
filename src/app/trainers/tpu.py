@@ -39,8 +39,7 @@ import torch_xla.runtime as xr
 import torch_xla.test.test_utils as tu
 from metrics import calc_metric
 from processings.post_processing import post_process_pipeline
-
-# from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm.auto import tqdm
 from utils import (
     compute_grad_metrics,
@@ -141,8 +140,6 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
     if xm.is_master_ordinal():
         cfg.train_writer, cfg.val_writer = get_metrics_logger(cfg)
 
-    xm.wait_device_ops()
-
     # Load data
     xm.master_print("Load data...")
     cfg.train_df, cfg.val_df = get_data(cfg)
@@ -157,19 +154,16 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
     scheduler = get_scheduler(cfg, optimizer, cfg.n_samples)  # type: ignore[arg-type]
     model = model.to(cfg.device)
 
-    xm.wait_device_ops()
-
     # Distributed Data Parallel setting
     xm.master_print("Distributed Data Parallel setting...")
     xm.broadcast_master_param(model)
     xm.master_print("Broadcasted model...")
-    # model = DDP(model, find_unused_parameters=True, gradient_as_bucket_view=True)
-    # xm.master_print("DDPed model...")
+    if cfg.ddp:
+        model = DDP(model, find_unused_parameters=True, gradient_as_bucket_view=True)
+        xm.master_print("DDPed model...")
     train_device_loader = pl.MpDeviceLoader(train_loader, cfg.device)
     val_device_loader = pl.MpDeviceLoader(val_loader, cfg.device)
     xm.master_print("Set device load...")
-
-    xm.wait_device_ops()
 
     # Training loop vars initialization
     xm.master_print("Training loop vars initialization...")
@@ -370,7 +364,6 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
                         )
 
                     # Update progress bar
-                    xm.wait_device_ops()
                     pbar.set_description(
                         f"Epoch {cfg.curr_epoch}/{cfg.epochs} |"
                         f"Step {cfg.curr_step}/{cfg.training_steps} |"
@@ -382,6 +375,7 @@ def trainer(cfg: SimpleNamespace, model: torch.nn.Module) -> None:
                     pbar.update(
                         min(cfg.closure_steps, cfg.training_steps - cfg.curr_step)
                     )
+                xm.rendez_vous("end_of_batch_rdv")
 
         # End of epoch logging and checkpointing
         losses_mean = (
