@@ -24,10 +24,10 @@
 
 import datetime
 import os
+import sys
 
 from models import LNet
-
-# from argparse import ArgumentParser
+from omegaconf import OmegaConf
 from omegaconf.OmegaConf import DictConfig
 from trainers import lightning_trainer
 from utils import get_callbacks, get_data, get_data_loaders
@@ -73,5 +73,7 @@ def main(cfg: "DictConfig") -> "None":
 
 
 if __name__ == "__main__":
-    args: "DictConfig" = ...
-    main(args)
+    cfg: "DictConfig" = OmegaConf.load("src/app/config/config.yaml")
+    cli_overrides: "DictConfig" = OmegaConf.from_dotlist(sys.argv[1:])
+    cfg = OmegaConf.merge(cfg, cli_overrides)
+    main(cfg)
