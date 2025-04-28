@@ -47,9 +47,9 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
     def __init__(
         self,
         cfg: "SimpleNamespace",
-        mode: "str" = "train",
+        df: "pd.DataFrame",
         aug: "mt.Transform | None" = None,
-        df: "pd.DataFrame | None" = None,
+        mode: "str" = "train",
     ) -> None:
         """_BYUCustomDataset_
 
@@ -73,29 +73,18 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
         self.cfg = cfg
         self.mode = mode
         self.data_folder = cfg.data_folder
+        self.new_size: "tuple[int]" = cfg.new_size
+        # TODO: modify utils to return a df also if cfg.test
+        # self.tomo_list = sorted([path.split("/")[-1] for path in glob(os.path.join(cfg.data_folder, "test", "**"))])
+        self.df: "pd.DataFrame" = df
+        self.tomo_list: "list[str]" = sorted(self.df.tomo_id.unique().tolist())
 
         if self.mode != "test":
             self.transforms: "mt.Transform | None" = aug
             self.static_transforms: "mt.Transform" = cfg.static_transforms
-        else:
-            self.test_transforms: "mt.Transform" = cfg.test_transforms
-
-        self.new_size: "tuple[int]" = cfg.new_size
-
-        if self.mode != "test":
-            self.df: "pd.DataFrame" = df
-            self.tomo_list: "list[str]" = sorted(self.df.tomo_id.unique().tolist())
             self.tomo_dict = self.df.groupby("tomo_id")
         else:
-            self.tomo_list = sorted(
-                [
-                    path.split("/")[-1]
-                    for path in glob(os.path.join(cfg.data_folder, "test", "**"))
-                ]
-            )
-        self.tomo_mapping = pd.DataFrame(
-            {"tomo_id": self.tomo_list, "id": range(len(self.tomo_list))}
-        )
+            self.test_transforms: "mt.Transform" = cfg.test_transforms
 
         if self.mode == "train":
             self.sub_epochs: "int" = cfg.train_sub_epochs
@@ -126,6 +115,7 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
                     "id": data["id"],  # type: ignore[call-overload]
                     "scale": data["scale"],  # type: ignore[call-overload]
                     "dims": data["dim"],  # type: ignore[call-overload]
+                    "zyx": data["zyx"],  # type: ignore[call-overload]
                 }
         else:
             data = self.test_transforms(data_)
@@ -160,16 +150,17 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
 
     def get_locs_n_vxs(
         self, tomo_id: "str", scale: "torch.Tensor"
-    ) -> "torch.Tensor | None":
+    ) -> "torch.Tensor | NDArray":
         "return motors centers coordinates (zyx) and voxel spacing (vxs)"
         zyx_: "NDArray" = self.tomo_dict.get_group(tomo_id)[
-            ["z", "y", "x"]
-        ].values.astype(int)
-        if (zyx_ == -1).any():
-            return None
-        zyx: "torch.Tensor" = torch.ceil(torch.tensor(zyx_) * scale)
-        # vxs = self.tomo_dict.get_group(tomo_id).iloc[0]["vxs"]
-        return zyx.to(torch.int)  # vxs
+            ["z", "y", "x", "id", "vxs"]
+        ].values.astype("float")
+        if (zyx_[:, :-2] == -1).any():
+            return zyx_
+        zyx = torch.zeros(zyx_.shape)
+        zyx[:, :-2] = torch.ceil(torch.tensor(zyx_[:, :-2]) * scale)
+        zyx[:, -2:] = torch.tensor(zyx_[:, -2:])
+        return zyx  # vxs
 
     def reduce_volume(self, volume: "torch.Tensor") -> "torch.Tensor":
         """_Downsample to a smaller tomogram_
@@ -205,27 +196,28 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
             dict: The data dictionary containing the input, target, id, scale and dim.
         """
         tomo_id: "str" = self.tomo_list[idx // self.sub_epochs]
-        num_tomo_idx: "int" = self.tomo_mapping.loc[
-            self.tomo_mapping.tomo_id == tomo_id, "id"
-        ].iloc[0]
+        tomo_idx: "int" = self.df.loc[self.df.tomo_id == tomo_id, "id"].iloc[0]
         tomogram: "torch.Tensor" = self.load_tomogram(tomo_id)
         s: "torch.Size" = tomogram.shape
         scale: "torch.Tensor" = self.compute_scale(s)
         tomogram = self.reduce_volume(tomogram)
 
         if self.mode != "test":
-            zyx: "torch.Tensor | None" = self.get_locs_n_vxs(
+            zyx: "torch.Tensor | NDArray" = self.get_locs_n_vxs(
                 tomo_id, scale
             )  # could return vxs there. see get_locs_n_vxs definition
             mask = torch.zeros_like(tomogram)
-            if zyx is not None:
+            if isinstance(zyx, torch.Tensor):
                 mask[zyx[:, 0], zyx[:, 1], zyx[:, 2]] = 1.0
+            else:
+                zyx = torch.tensor(zyx)
             return {
                 "input": tomogram,
                 "target": mask,
-                "id": num_tomo_idx,
+                "zyx": zyx,
+                "id": tomo_idx,
                 "scale": scale,
                 "dim": s,
             }
         else:
-            return {"input": tomogram, "id": num_tomo_idx, "scale": scale, "dim": s}
+            return {"input": tomogram, "id": tomo_idx, "scale": scale, "dim": s}

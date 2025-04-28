@@ -1,0 +1,81 @@
+# MIT License
+#
+# Copyright (c) 2024, Yebouet Cédrick-Armel
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+from types import SimpleNamespace
+
+import monai.transforms as mt
+
+
+def get_transforms(cfg: "SimpleNamespace") -> "tuple[mt.Transform, ...]":
+    static = mt.Compose(
+        [
+            mt.EnsureChannelFirstd(keys=["input", "target"], channel_dim="no_channel"),
+            mt.AdjustContrastd(keys=["input"], gamma=cfg.gamma),
+            mt.ScaleIntensityd(keys=["input"]),
+            mt.Orientationd(keys=["input", "target"], axcodes="RAS"),
+        ]
+    )
+
+    train = mt.Compose(
+        [
+            mt.RandCropByLabelClassesd(
+                keys=["input", "target"],
+                label_key="target",
+                spatial_size=cfg.roi_size,
+                num_samples=cfg.sub_batch_size,
+                num_classes=2,
+                ratios=[1, 1],
+                warn=False,
+            ),
+            mt.RandFlipd(keys=["input", "target"], prob=0.5, spatial_axis=0),
+            mt.RandFlipd(keys=["input", "target"], prob=0.5, spatial_axis=1),
+            mt.RandFlipd(keys=["input", "target"], prob=0.5, spatial_axis=2),
+            mt.RandRotate90d(
+                keys=["input", "target"], prob=0.75, max_k=3, spatial_axes=(0, 1)
+            ),
+            mt.RandRotated(
+                keys=["input", "target"],
+                prob=0.5,
+                range_x=0.78,
+                range_y=0.0,
+                range_z=0.0,
+                padding_mode="reflection",
+            ),
+        ]
+    )
+    evalt = mt.Compose(
+        [
+            mt.GridPatchd(
+                keys=["input", "target"], patch_size=cfg.roi_size, pad_mode="reflect"
+            )
+        ]
+    )
+    test = mt.Compose(
+        [
+            mt.EnsureChannelFirstd(keys=["input"], channel_dim="no_channel"),
+            mt.AdjustContrastd(keys=["input"], gamma=cfg.gamma),
+            mt.ScaleIntensityd(keys=["input"]),
+            mt.Orientationd(keys=["input"], axcodes="RAS"),
+            mt.GridPatchd(keys=["input"], patch_size=cfg.roi_size, pad_mode="reflect"),
+        ]
+    )
+    return static, train, evalt, test

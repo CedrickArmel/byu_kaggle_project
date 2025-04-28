@@ -20,6 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from .lightning import LNet
 from .models import Net
 
-__all__: list[str] = ["Net"]
+__all__: list[str] = ["Net", "LNet"]

@@ -23,7 +23,7 @@
 import os
 import random
 from collections import defaultdict
-from copy import deepcopy
+from glob import glob
 from types import SimpleNamespace
 from typing import Any
 
@@ -32,134 +32,9 @@ import pandas as pd
 import torch
 import torch.optim as optim
 import torch_xla as xla
-import torch_xla.test.test_utils as tu
 from data.datasets import BYUCustomDataset
+from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
 from torch.utils.data import DataLoader
-from torch.utils.data.distributed import DistributedSampler
-
-
-def calc_grad_norm(
-    parameters: "list[torch.Tensor] | torch.Tensor", norm_type: "float" = 2.0
-) -> "torch.Tensor":
-    """
-    Calculate the gradient norm the parameters.
-    This function computes the norm of the gradients of the given parameters
-    using the specified norm type. If no gradients are available, it returns 0.
-    Args:
-        parameters (list[torch.Tensor] | torch.Tensor): A list of tensors or a single tensor
-            whose gradients will be used to compute the norm. If a tensor does not have
-            a gradient, it will be ignored.
-        norm_type (float, optional): The type of norm to compute (e.g., 2.0 for L2 norm).
-            Defaults to 2.0.
-    Returns:
-        torch.Tensor: The computed gradient norm as a tensor. If no gradients are available,
-            returns a tensor with value 0.0.
-    """
-    if isinstance(parameters, torch.Tensor):
-        parameters = [parameters]
-    parameters = [p for p in parameters if p.grad is not None]
-    if len(parameters) == 0:
-        return torch.tensor(0.0)
-    norm_type = float(norm_type)
-    device: "torch.device" = parameters[0].grad.device  # type: ignore[union-attr]
-    total_norm = torch.norm(
-        torch.stack(
-            [torch.norm(p.grad.detach(), norm_type).to(device) for p in parameters]  # type: ignore[union-attr]
-        ),
-        norm_type,
-    )
-    return total_norm
-
-
-def calc_weight_norm(
-    parameters: "list[torch.Tensor] | torch.Tensor", norm_type: "float" = 2.0
-) -> "torch.Tensor":
-    """
-    Calculate the average normalized weight of the parameters.
-    Args:
-        parameters (list[torch.Tensor] | torch.Tensor):Model parameters whose norms
-            are to be calculated. Tensors without gradients are ignored.
-        norm_type (float, optional): The type of norm to compute. Defaults to 2.0 (Euclidean norm).
-
-    Returns:
-        torch.Tensor: The mean of the computed norms of the tensors. If no tensors with gradients
-        are provided, returns a tensor with value 0.0.
-    """
-    if isinstance(parameters, torch.Tensor):
-        parameters = [parameters]
-    parameters = [p for p in parameters if p.grad is not None]
-    if len(parameters) == 0:
-        return torch.tensor(0.0)
-    norm_type = float(norm_type)
-    device: "torch.device" = parameters[0].grad.device  # type: ignore[union-attr]
-    total_norm = torch.stack(
-        [torch.norm(p.detach(), norm_type).to(device) for p in parameters]
-    ).mean()
-    return total_norm
-
-
-def create_checkpoint(
-    cfg: "SimpleNamespace",
-    model: "torch.nn.Module",
-    optimizer: "optim.Optimizer",
-    scheduler: "optim.lr_scheduler.LRScheduler | None" = None,
-    scaler: "torch.amp.GradScaler | None" = None,
-) -> "dict[str, Any]":
-    """Create a checkpoint (state) for the model, optimizer, scaler, and scheduler."""
-    state_dict = deepcopy(model.state_dict())
-    if cfg.save_weights_only:
-        checkpoint = {"model": state_dict}
-        return checkpoint
-
-    checkpoint = {
-        "model": state_dict,
-        "optimizer": deepcopy(optimizer.state_dict()),
-        "epoch": cfg.curr_epoch,
-    }
-    if scheduler is not None:
-        checkpoint["scheduler"] = deepcopy(scheduler.state_dict())
-    if scaler is not None:
-        checkpoint["scaler"] = deepcopy(scaler.state_dict())
-    return checkpoint
-
-
-def load_checkpoint(
-    cfg: "SimpleNamespace",
-    model: "torch.nn.Module",
-    optimizer: "optim.Optimizer",
-    scheduler: "optim.lr_scheduler.LRScheduler | None" = None,
-    scaler: "torch.amp.GradScaler | None" = None,
-) -> "tuple[torch.nn.Module, optim.Optimizer, dict[str, Any], torch.amp.GradScaler | None, int]":
-    """
-    Loads a training checkpoint and restores the model, optimizer, scheduler, and scaler states.
-
-    Args:
-        cfg (SimpleNamespace): Configuration object containing the path to the checkpoint file
-            (accessible via `cfg.resume_from`).
-        model (torch.nn.Module): The model instance to load the state dictionary into.
-        optimizer (optim.Optimizer): The optimizer instance to load the state dictionary into.
-        scheduler (optim.lr_scheduler.LRScheduler | None, optional): The learning rate scheduler
-            instance to restore state for. Defaults to None.
-        scaler (torch.amp.GradScaler | None, optional): The gradient scaler instance for mixed
-            precision training to restore state for. Defaults to None.
-
-    Returns:
-        tuple: A tuple containing:
-            - model (torch.nn.Module): The model with restored state.
-            - optimizer (optim.Optimizer): The optimizer with restored state.
-            - scheduler_dict (dict): The state dictionary of the scheduler.
-            - scaler (torch.amp.GradScaler | None): The scaler with restored state, if provided.
-            - epoch (int): The epoch number at which the checkpoint was saved.
-    """
-    checkpoint = torch.load(cfg.resume_from, map_location="cpu")
-    model.load_state_dict(checkpoint["model"])
-    optimizer.load_state_dict(checkpoint["optimizer"])
-    scheduler_dict = checkpoint["scheduler"]
-    if scaler is not None:
-        scaler.load_state_dict(checkpoint["scaler"])
-
-    epoch = checkpoint["epoch"]
-    return model, optimizer, scheduler_dict, scaler, epoch
 
 
 def collate_fn(batch: "list[dict[str, Any]]") -> "dict[str, Any]":
@@ -186,39 +61,28 @@ def collate_fn(batch: "list[dict[str, Any]]") -> "dict[str, Any]":
     return batch_dict
 
 
-def compute_grad_metrics(
-    cfg: "SimpleNamespace", model: "torch.nn.Module"
-) -> "torch.Tensor":
-    """
-    Computes gradient and weight norm metrics for a given model.
-    Args:
-        cfg (SimpleNamespace): Configuration object containing the following attributes:
-            - track_grad_norm (bool): Whether to compute and track the gradient norm.
-            - clip_grad (float): Value for gradient clipping. If greater than 0, gradients are clipped.
-            - grad_norm_type (int): Type of norm to compute for gradients (e.g., 2 for L2 norm).
-            - track_weight_norm (bool): Whether to compute and track the weight norm.
-            - device (torch.device): Device to which the computed metrics tensor will be moved.
-        model (torch.nn.Module): The model whose gradients and weights are analyzed.
-    Returns:
-        torch.Tensor: A tensor containing the following metrics:
-            - grad_norm (float): The norm of the gradients before clipping, or NaN if not tracked.
-            - grad_norm_after_clip (float): The norm of the gradients after clipping, or NaN if not tracked.
-            - weight_norm (float): The norm of the model's weights, or NaN if not tracked.
-    """
-    grad_norm = calc_grad_norm(model.parameters()) if cfg.track_grad_norm else torch.nan  # type: ignore[arg-type]
-    if cfg.clip_grad > 0:
-        torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.clip_grad)
-    grad_norm_after_clip = (
-        calc_grad_norm(model.parameters(), cfg.grad_norm_type)  # type: ignore[arg-type]
-        if (cfg.clip_grad > 0 and cfg.track_grad_norm)
-        else torch.nan
+def get_callbacks(cfg: "SimpleNamespace") -> "tuple[Callback, ...]":
+    chckpt_cb = ModelCheckpoint(
+        filename=cfg.filename,
+        monitor=cfg.monitor,
+        verbose=False,
+        save_last=cfg.save_last,
+        save_top_k=cfg.save_top_k,
+        save_weights_only=cfg.save_weights_only,
+        mode=cfg.mode,
+        auto_insert_metric_name=cfg.auto_insert_metric_name,
+        every_n_train_steps=cfg.every_n_train_steps,
+        train_time_interval=cfg.train_time_interval,
+        every_n_epochs=cfg.every_n_epochs,
+        save_on_train_epoch_end=cfg.save_on_train_epoch_end,
+        enable_version_counter=cfg.enable_version_counter,
     )
-    weight_norm = (
-        calc_weight_norm(model.parameters(), cfg.grad_norm_type)  # type: ignore[arg-type]
-        if cfg.track_weight_norm
-        else torch.nan
+    lr_cb = LearningRateMonitor(
+        logging_interval=cfg.logging_interval,
+        log_momentum=cfg.log_momentum,
+        log_weight_decay=cfg.log_weight_decay,
     )
-    return torch.tensor([grad_norm, grad_norm_after_clip, weight_norm]).to(cfg.device)
+    return chckpt_cb, lr_cb
 
 
 def get_data_loaders(
@@ -258,25 +122,12 @@ def get_data_loaders(
         train_ds = BYUCustomDataset(
             cfg, mode="train", df=cfg.train_df, aug=cfg.train_transforms
         )
-
-        train_sampler: "DistributedSampler | None" = (
-            DistributedSampler(
-                train_ds,
-                num_replicas=cfg.world_size,
-                rank=cfg.rank,
-                shuffle=cfg.shuffle,
-            )
-            if cfg.tpu
-            else None
-        )
         train_loader = DataLoader(
             dataset=train_ds,
             batch_size=cfg.batch_size,
             num_workers=cfg.num_workers,
             collate_fn=collate_fn,
             pin_memory=cfg.pin_memory,
-            sampler=train_sampler,
-            shuffle=False if train_sampler else cfg.shuffle,
             drop_last=cfg.drop_last,
             prefetch_factor=cfg.prefetch_factor,
         )
@@ -295,7 +146,7 @@ def get_data_loaders(
         return train_loader, val_loader
 
     if cfg.test:
-        test_ds = BYUCustomDataset(cfg, mode="test")
+        test_ds = BYUCustomDataset(cfg, df=cfg.test_df, mode="test")
         test_loader = DataLoader(
             dataset=test_ds,
             batch_size=cfg.batch_size_val,
@@ -308,7 +159,7 @@ def get_data_loaders(
     return None
 
 
-def get_data(cfg: "SimpleNamespace") -> "tuple[pd.DataFrame, pd.DataFrame]":
+def get_data(cfg: "SimpleNamespace") -> "tuple[pd.DataFrame,...] | None":
     """
     Loads and splits a dataset into training and validation DataFrames based on the provided configuration.
     Args:
@@ -320,27 +171,26 @@ def get_data(cfg: "SimpleNamespace") -> "tuple[pd.DataFrame, pd.DataFrame]":
     Returns:
         tuple[pd.DataFrame, pd.DataFrame]: A tuple containing the training DataFrame and validation DataFrame.
     """
-    df = pd.read_csv(cfg.df_path)
-    if cfg.overfit:
-        train_df = df[df.tomo_id.isin(cfg.overfit_tomos)]
-        val_df = df[df.fold == 0]
-    else:
+    if cfg.train:
+        df = pd.read_csv(cfg.df_path)
         if cfg.fold > -1:
             train_df = df[df.fold != cfg.fold]
             val_df = df[df.fold == cfg.fold]
         else:
             train_df = df[df.fold != 0]
             val_df = df[df.fold == 0]
-    return train_df, val_df
-
-
-def get_metrics_logger(
-    cfg: "SimpleNamespace",
-) -> "tuple[tu.SummaryWriter, tu.SummaryWriter]":
-    """Creates and returns summary writers for training and validation metrics logging."""
-    train_log_dir = os.path.join(cfg.submission_dir, "logs", cfg.start_time, "train")
-    val_log_dir = os.path.join(cfg.submission_dir, "logs", cfg.start_time, "eval")
-    return tu.get_summary_writer(train_log_dir), tu.get_summary_writer(val_log_dir)
+        return train_df, val_df
+    if cfg.test:
+        test_tomo_id = sorted(
+            [
+                path.split("/")[-1]
+                for path in glob(os.path.join(cfg.data_folder, "test", "**"))
+            ]
+        )
+        num_ids = list(range(0, len(test_tomo_id)))
+        test_df = pd.DataFrame(dict(tomo_id=test_tomo_id, id=num_ids))
+        return test_df
+    return None
 
 
 def get_optimizer(
@@ -505,7 +355,7 @@ def get_scheduler(
             - cfg.warmup (int): Number of warmup steps (used for "multistep" and "linear").
             - cfg.milestones (list[int]): Milestones for MultiStepLR (used for "multistep").
             - cfg.end_lambda (float): Final lambda value for MultiStepLR (used for "multistep").
-            - cfg.epochs (int): Total number of epochs (used for "multistep" and "linear").
+            - cfg.max_epochs (int): Total number of epochs (used for "multistep" and "linear").
         optimizer (optim.Optimizer): The optimizer for which the scheduler will adjust the learning rate.
         total_steps (int): Total number of training steps.
     Returns:
@@ -524,7 +374,7 @@ def get_scheduler(
             optimizer,
             warmup_steps=cfg.warmup,
             m=cfg.milestones,
-            training_steps=cfg.epochs
+            training_steps=cfg.max_epochs
             * (total_steps // cfg.batch_size)
             // cfg.world_size,
             end_lambda=cfg.end_lambda,
@@ -534,7 +384,7 @@ def get_scheduler(
         return get_linear_schedule_with_warmup(
             optimizer,
             num_warmup_steps=0,
-            num_training_steps=cfg.epochs
+            num_training_steps=cfg.max_epochs
             * (total_steps // cfg.batch_size)
             // cfg.world_size,
         )
