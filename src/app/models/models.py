@@ -20,7 +20,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from types import SimpleNamespace
 from typing import Any
 
 import torch
@@ -30,6 +29,7 @@ from monai.networks.nets.flexible_unet import (
     SegmentationHead,
     UNetDecoder,
 )
+from omegaconf.OmegaConf import DictConfig
 from torch import nn
 from torch.distributions import Beta
 
@@ -293,7 +293,7 @@ class Net(nn.Module):  # type: ignore[misc]
     to support sub_batches and avoid OOM errors.
     """
 
-    def __init__(self, cfg: "SimpleNamespace") -> None:
+    def __init__(self, cfg: "DictConfig") -> None:
         """Initialize the Net module."""
         super(Net, self).__init__()
         self.cfg = cfg

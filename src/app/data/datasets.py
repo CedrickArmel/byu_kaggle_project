@@ -22,7 +22,6 @@
 
 import os
 from glob import glob
-from types import SimpleNamespace
 from typing import Any
 
 import monai.transforms as mt
@@ -30,6 +29,7 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 from numpy.typing import NDArray
+from omegaconf.OmegaConf import DictConfig
 from torch.utils.data import Dataset
 from torchvision.io import decode_jpeg, read_file
 
@@ -46,7 +46,7 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
 
     def __init__(
         self,
-        cfg: "SimpleNamespace",
+        cfg: "DictConfig",
         df: "pd.DataFrame",
         aug: "mt.Transform | None" = None,
         mode: "str" = "train",
@@ -54,7 +54,7 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
         """_BYUCustomDataset_
 
         Args:
-            cfg (SimpleNamespace): Configuration object containing project's parameters.
+            cfg (DictConfig): Configuration object containing project's parameters.
             mode (str, optional): Whether loading the data for train/validation/test. Defaults to "train".
             aug (mt.Transform, optional): Transformation to apply to the data. Defaults to None.
             df (pd.DataFrame|None, optional): Dataframe containing the fold. Defaults to None.

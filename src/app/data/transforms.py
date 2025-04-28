@@ -20,12 +20,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from types import SimpleNamespace
-
 import monai.transforms as mt
+from omegaconf.OmegaConf import DictConfig
 
 
-def get_transforms(cfg: "SimpleNamespace") -> "tuple[mt.Transform, ...]":
+def get_transforms(cfg: "DictConfig") -> "tuple[mt.Transform, ...]":
     static = mt.Compose(
         [
             mt.EnsureChannelFirstd(keys=["input", "target"], channel_dim="no_channel"),

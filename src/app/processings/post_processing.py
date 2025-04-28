@@ -20,11 +20,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from types import SimpleNamespace
 from typing import Any
 
 import torch
 import torch.nn.functional as F
+from omegaconf.OmegaConf import DictConfig
 
 
 def get_output_size(
@@ -93,11 +93,11 @@ def simple_nms(scores: "torch.Tensor", nms_radius: "int") -> "torch.Tensor":
 
 
 def post_process_pipeline(
-    cfg: "SimpleNamespace", net_output: "dict[str, Any]"
+    cfg: "DictConfig", net_output: "dict[str, Any]"
 ) -> "torch.Tensor":
     """Post-process the output of the model to get the final coordinates and confidence scores.
     Args:
-        cfg (types.SimpleNamespace): Configuration object containing project's parameters.
+        cfg (DictConfig): Configuration object containing project's parameters.
         net_output (dict): The output of the model.
     Returns:
         torch.Tensor: The final coordinates and confidence scores.

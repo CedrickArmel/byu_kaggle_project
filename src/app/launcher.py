@@ -25,10 +25,10 @@
 import datetime
 import os
 
-# from argparse import ArgumentParser
-from types import SimpleNamespace
-
 from models import LNet
+
+# from argparse import ArgumentParser
+from omegaconf.OmegaConf import DictConfig
 from trainers import lightning_trainer
 from utils import get_callbacks, get_data, get_data_loaders
 
@@ -36,7 +36,7 @@ from utils import get_callbacks, get_data, get_data_loaders
 from data import get_transforms
 
 
-def main(cfg: "SimpleNamespace") -> "None":
+def main(cfg: "DictConfig") -> "None":
     cfg.train_df, cfg.val_df = get_data(cfg)
     (
         cfg.static_transforms,
@@ -73,5 +73,5 @@ def main(cfg: "SimpleNamespace") -> "None":
 
 
 if __name__ == "__main__":
-    args: "SimpleNamespace" = ...
+    args: "DictConfig" = ...
     main(args)

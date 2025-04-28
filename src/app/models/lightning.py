@@ -21,13 +21,13 @@
 # SOFTWARE.
 
 import os
-from types import SimpleNamespace
 from typing import Any
 
 import lightning as L
 import torch
 from metrics import BYUFbeta
 from models import Net
+from omegaconf.OmegaConf import DictConfig
 from processings import post_process_pipeline
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
@@ -39,7 +39,7 @@ from utils import get_multistep_schedule_with_warmup, get_optimizer
 class LNet(L.LightningModule):
     """Lightning wrapper for models.Net"""
 
-    def __init__(self, cfg: "SimpleNamespace") -> None:
+    def __init__(self, cfg: "DictConfig") -> None:
         """Init method called once"""
         self.cfg = cfg
         self.model = Net(cfg)
