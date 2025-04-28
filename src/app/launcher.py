@@ -20,29 +20,58 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# mypy: disable-error-code="misc, assignment"
 
-# type: ignore
+import datetime
+import os
+
+# from argparse import ArgumentParser
 from types import SimpleNamespace
 
-import torch_xla as xla  # type: ignore
-from config import cfg
-from models import Net
-from torch import nn
-from trainers import trainer
+from models import LNet
+from trainers import lightning_trainer
+from utils import get_callbacks, get_data, get_data_loaders
+
+# from config import cfg
+from data import get_transforms
 
 
-def _mp_fn(index: "int", cfg: "SimpleNamespace", model: "nn.Module") -> None:
-    trainer(cfg, model)
+def main(cfg: "SimpleNamespace") -> "None":
+    cfg.train_df, cfg.val_df = get_data(cfg)
+    (
+        cfg.static_transforms,
+        cfg.train_transforms,
+        cfg.eval_transforms,
+        cfg.test_transforms,
+    ) = get_transforms(cfg)
+    train_loader, val_loader = get_data_loaders(cfg)
+    chckpt_cb, lr_cb = get_callbacks(cfg)
 
+    start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    cfg.default_root_dir = os.path.join(
+        "/kaggle/working/{cfg.backbone}",
+        f"seed_{cfg.seed}",
+        f"fold{cfg.fold}",
+        f"{start_time}",
+    )
 
-def main() -> None:
-    """Launcher"""
-    model = Net(cfg)
-    if cfg.pretrained:
-        for param in model.backbone.encoder.parameters():
-            param.requires_grad = False
-    xla.launch(_mp_fn, args=(cfg, model))
+    cfg.backbone_args = dict(
+        spatial_dims=cfg.spatial_dims,
+        in_channels=cfg.in_channels,
+        out_channels=cfg.n_classes,
+        backbone=cfg.backbone,
+        pretrained=cfg.pretrained,
+    )
+    trainer = lightning_trainer(cfg, [chckpt_cb, lr_cb])
+    model = LNet(cfg)
+    trainer.fit(
+        model,
+        train_dataloaders=train_loader,
+        val_dataloaders=val_loader,
+        ckpt_path=None,
+    )
 
 
 if __name__ == "__main__":
-    main()
+    args: "SimpleNamespace" = ...
+    main(args)

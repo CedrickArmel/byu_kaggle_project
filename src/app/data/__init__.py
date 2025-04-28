@@ -21,5 +21,6 @@
 # SOFTWARE.
 
 from .datasets import BYUCustomDataset
+from .transforms import get_transforms
 
-__all__ = ["BYUCustomDataset"]
+__all__ = ["BYUCustomDataset", "get_transforms"]

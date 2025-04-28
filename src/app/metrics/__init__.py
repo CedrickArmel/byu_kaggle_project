@@ -20,6 +20,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .metrics import calc_metric
+from .metrics import BYUFbeta
 
-__all__ = ["calc_metric"]
+__all__ = ["BYUFbeta"]

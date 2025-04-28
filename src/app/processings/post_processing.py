@@ -183,5 +183,5 @@ def post_process_pipeline(
         conf = torch.cat([conf, dummy_conf])
         ids_.extend(empty_tomos)
     ids: "torch.Tensor" = torch.tensor(ids_, device=device)
-    output: "torch.Tensor" = torch.stack([z, y, x, conf, ids], dim=1)
+    output: "torch.Tensor" = torch.stack([z, y, x, ids, conf], dim=1)
     return output
