@@ -21,7 +21,7 @@
 # SOFTWARE.
 
 import monai.transforms as mt
-from omegaconf.OmegaConf import DictConfig
+from omegaconf import DictConfig
 
 
 def get_transforms(cfg: "DictConfig") -> "tuple[mt.Transform, ...]":

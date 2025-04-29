@@ -29,7 +29,7 @@ from monai.networks.nets.flexible_unet import (
     SegmentationHead,
     UNetDecoder,
 )
-from omegaconf.OmegaConf import DictConfig
+from omegaconf import DictConfig
 from torch import nn
 from torch.distributions import Beta
 

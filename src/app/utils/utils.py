@@ -32,7 +32,7 @@ import torch
 import torch.optim as optim
 import torch_xla as xla
 from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
-from omegaconf.OmegaConf import DictConfig
+from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
 from data import BYUCustomDataset

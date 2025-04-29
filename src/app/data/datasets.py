@@ -29,7 +29,7 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 from numpy.typing import NDArray
-from omegaconf.OmegaConf import DictConfig
+from omegaconf import DictConfig
 from torch.utils.data import Dataset
 from torchvision.io import decode_jpeg, read_file
 

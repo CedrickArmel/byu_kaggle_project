@@ -22,10 +22,10 @@
 
 import lightning as L
 from lightning.pytorch.callbacks import Callback
-from omegaconf.OmegaConf import DictConfig
+from omegaconf import DictConfig
 
 
-def lightning_trainer(cfg: "DictConfig", callbacks: "list[Callback]"):
+def get_lightning_trainer(cfg: "DictConfig", callbacks: "list[Callback]"):
     return L.Trainer(
         accelerator=cfg.accelerator,
         strategy=cfg.strategy,

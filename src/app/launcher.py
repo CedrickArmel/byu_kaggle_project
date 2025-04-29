@@ -24,18 +24,17 @@
 
 import datetime
 import os
-import sys
 
+import hydra
 from models import LNet
-from omegaconf import OmegaConf
-from omegaconf.OmegaConf import DictConfig
-from trainers import lightning_trainer
+from omegaconf import DictConfig
+from trainers import get_lightning_trainer
 from utils import get_callbacks, get_data, get_data_loaders
 
-# from config import cfg
 from data import get_transforms
 
 
+@hydra.main(config_path="src/app/config", config_name="config")
 def main(cfg: "DictConfig") -> "None":
     cfg.train_df, cfg.val_df = get_data(cfg)
     (
@@ -62,7 +61,7 @@ def main(cfg: "DictConfig") -> "None":
         backbone=cfg.backbone,
         pretrained=cfg.pretrained,
     )
-    trainer = lightning_trainer(cfg, [chckpt_cb, lr_cb])
+    trainer = get_lightning_trainer(cfg, [chckpt_cb, lr_cb])
     model = LNet(cfg)
     trainer.fit(
         model,
@@ -73,7 +72,4 @@ def main(cfg: "DictConfig") -> "None":
 
 
 if __name__ == "__main__":
-    cfg: "DictConfig" = OmegaConf.load("src/app/config/config.yaml")
-    cli_overrides: "DictConfig" = OmegaConf.from_dotlist(sys.argv[1:])
-    cfg = OmegaConf.merge(cfg, cli_overrides)
-    main(cfg)
+    main()

@@ -27,7 +27,7 @@ import lightning as L
 import torch
 from metrics import BYUFbeta
 from models import Net
-from omegaconf.OmegaConf import DictConfig
+from omegaconf import DictConfig
 from processings import post_process_pipeline
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler

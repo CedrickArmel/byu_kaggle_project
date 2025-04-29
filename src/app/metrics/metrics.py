@@ -28,7 +28,7 @@ https://www.kaggle.com/code/metric/czi-cryoet-84969?scriptVersionId=208227222&ce
 import numpy as np
 import torch
 from numpy.typing import NDArray
-from omegaconf.OmegaConf import DictConfig
+from omegaconf import DictConfig
 from scipy.spatial import KDTree
 from torchmetrics import Metric
 from torchmetrics.utilities import dim_zero_cat

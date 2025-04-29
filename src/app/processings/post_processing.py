@@ -24,7 +24,7 @@ from typing import Any
 
 import torch
 import torch.nn.functional as F
-from omegaconf.OmegaConf import DictConfig
+from omegaconf import DictConfig
 
 
 def get_output_size(
