@@ -67,7 +67,7 @@ def main(cfg: "DictConfig") -> "None":
         model,
         train_dataloaders=train_loader,
         val_dataloaders=val_loader,
-        ckpt_path=None,
+        ckpt_path=cfg.ckpt_path,
     )
 
 
