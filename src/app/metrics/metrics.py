@@ -104,9 +104,7 @@ class BYUFbeta(Metric):
     def _filter_negatives(
         self, ut_preds: "torch.Tensor", ntargets: "torch.Tensor"
     ) -> "tuple[int, int]":
-        select_negatives = torch.isin(
-            ut_preds[:, -1], ntargets[:, -2]
-        )  # z, y, x , ids, vxs
+        select_negatives = torch.isin(ut_preds[:, -1], ntargets[:, -2])
         tn = len(ut_preds[select_negatives])
         fn = len(ut_preds[~select_negatives])
         return tn, fn
@@ -125,9 +123,7 @@ class BYUFbeta(Metric):
             ref_select: "torch.Tensor" = ptargets[:, -2] == tid
             candidate_select = candidates[:, -1] == tid
 
-            reference_points = ptargets[
-                ref_select, :-2
-            ]  # On enlève l'id (seulement coords : z,y,x)
+            reference_points = ptargets[ref_select, :-2]
             candidate_points = candidates[candidate_select, :-1]
             vxs = ptargets[ref_select, -2][0]
             reference_radius = int((motor_radius / vxs) * 2)
@@ -160,6 +156,3 @@ class BYUFbeta(Metric):
             fp += len(candidate_points) - len(matched_references)
             fn += len(reference_points) - len(matched_references)
         return tp, fp, fn
-
-
-# TODO: torchmetrics.utilities.distributed.gather_all_tensors

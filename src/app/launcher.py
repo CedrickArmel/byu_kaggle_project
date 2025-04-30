@@ -29,26 +29,21 @@ import hydra
 from models import LNet
 from omegaconf import DictConfig
 from trainers import get_lightning_trainer
-from utils import get_callbacks, get_data, get_data_loaders
-
-from data import get_transforms
+from utils import get_callbacks, get_data, get_data_loader, set_seed
 
 
-@hydra.main(config_path="src/app/config", config_name="config")
+@hydra.main(config_path="./config", config_name="config")
 def main(cfg: "DictConfig") -> "None":
-    cfg.train_df, cfg.val_df = get_data(cfg)
-    (
-        cfg.static_transforms,
-        cfg.train_transforms,
-        cfg.eval_transforms,
-        cfg.test_transforms,
-    ) = get_transforms(cfg)
-    train_loader, val_loader = get_data_loaders(cfg)
+    set_seed(cfg.seed)
+    train_df, val_df = get_data(cfg, mode="fit")
+    train_loader = get_data_loader(cfg, train_df, mode="train")
+    val_loader = get_data_loader(cfg, val_df, mode="validation")
     chckpt_cb, lr_cb = get_callbacks(cfg)
 
     start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     cfg.default_root_dir = os.path.join(
-        f"/kaggle/working/{cfg.backbone}",
+        cfg.output_dir,
+        cfg.backbone,
         f"seed_{cfg.seed}",
         f"fold{cfg.fold}",
         f"{start_time}",

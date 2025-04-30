@@ -21,6 +21,5 @@
 # SOFTWARE.
 
 from .lightning import LNet
-from .models import Net
 
-__all__: list[str] = ["Net", "LNet"]
+__all__: list[str] = ["LNet"]

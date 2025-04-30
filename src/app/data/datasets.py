@@ -33,6 +33,8 @@ from omegaconf import DictConfig
 from torch.utils.data import Dataset
 from torchvision.io import decode_jpeg, read_file
 
+from .transforms import get_transforms
+
 
 def load_image(path: "str") -> torch.Tensor:
     """Load an image from a file path."""
@@ -48,7 +50,6 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
         self,
         cfg: "DictConfig",
         df: "pd.DataFrame",
-        aug: "mt.Transform | None" = None,
         mode: "str" = "train",
     ) -> None:
         """_BYUCustomDataset_
@@ -56,7 +57,6 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
         Args:
             cfg (DictConfig): Configuration object containing project's parameters.
             mode (str, optional): Whether loading the data for train/validation/test. Defaults to "train".
-            aug (mt.Transform, optional): Transformation to apply to the data. Defaults to None.
             df (pd.DataFrame|None, optional): Dataframe containing the fold. Defaults to None.
 
         Raises:
@@ -65,26 +65,23 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
         if mode not in ["train", "validation", "test"]:
             raise ValueError("mode argument must be one of train, validation or test!")
 
-        if mode != "test" and df is None:
-            raise ValueError(
-                "df argument must be provided for train and validation modes!"
-            )
-
         self.cfg = cfg
         self.mode = mode
         self.data_folder = cfg.data_folder
         self.new_size: "tuple[int]" = cfg.new_size
-        # TODO: modify utils to return a df also if cfg.test
-        # self.tomo_list = sorted([path.split("/")[-1] for path in glob(os.path.join(cfg.data_folder, "test", "**"))])
         self.df: "pd.DataFrame" = df
         self.tomo_list: "list[str]" = sorted(self.df.tomo_id.unique().tolist())
 
         if self.mode != "test":
-            self.transforms: "mt.Transform | None" = aug
-            self.static_transforms: "mt.Transform" = cfg.static_transforms
+            self.transforms: "mt.Transform" = get_transforms(
+                self.cfg, transform=self.mode
+            )
+            self.static_transforms: "mt.Transform" = get_transforms(self.cfg)
             self.tomo_dict = self.df.groupby("tomo_id")
         else:
-            self.test_transforms: "mt.Transform" = cfg.test_transforms
+            self.test_transforms: "mt.Transform" = get_transforms(
+                self.cfg, transform=self.mode
+            )
 
         if self.mode == "train":
             self.sub_epochs: "int" = cfg.train_sub_epochs

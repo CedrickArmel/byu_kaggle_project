@@ -26,7 +26,6 @@ from typing import Any
 import lightning as L
 import torch
 from metrics import BYUFbeta
-from models import Net
 from omegaconf import DictConfig
 from processings import post_process_pipeline
 from torch.optim import Optimizer
@@ -34,6 +33,8 @@ from torch.optim.lr_scheduler import LRScheduler
 from torchmetrics.utilities import dim_zero_cat
 from torchmetrics.utilities.distributed import gather_all_tensors
 from utils import get_multistep_schedule_with_warmup, get_optimizer
+
+from .models import Net
 
 
 class LNet(L.LightningModule):

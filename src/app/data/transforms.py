@@ -24,57 +24,71 @@ import monai.transforms as mt
 from omegaconf import DictConfig
 
 
-def get_transforms(cfg: "DictConfig") -> "tuple[mt.Transform, ...]":
-    static = mt.Compose(
-        [
-            mt.EnsureChannelFirstd(keys=["input", "target"], channel_dim="no_channel"),
-            mt.AdjustContrastd(keys=["input"], gamma=cfg.gamma),
-            mt.ScaleIntensityd(keys=["input"]),
-            mt.Orientationd(keys=["input", "target"], axcodes="RAS"),
-        ]
-    )
+def get_transforms(cfg: "DictConfig", transform: "str" = "static") -> "mt.Transform":
+    if transform not in ["static", "test", "train", "validation"]:
+        raise ValueError(
+            "transform argument must be one of eval, static, test or train!"
+        )
 
-    train = mt.Compose(
-        [
-            mt.RandCropByLabelClassesd(
-                keys=["input", "target"],
-                label_key="target",
-                spatial_size=cfg.roi_size,
-                num_samples=cfg.sub_batch_size,
-                num_classes=2,
-                ratios=[1, 1],
-                warn=False,
-            ),
-            mt.RandFlipd(keys=["input", "target"], prob=0.5, spatial_axis=0),
-            mt.RandFlipd(keys=["input", "target"], prob=0.5, spatial_axis=1),
-            mt.RandFlipd(keys=["input", "target"], prob=0.5, spatial_axis=2),
-            mt.RandRotate90d(
-                keys=["input", "target"], prob=0.75, max_k=3, spatial_axes=(0, 1)
-            ),
-            mt.RandRotated(
-                keys=["input", "target"],
-                prob=0.5,
-                range_x=0.78,
-                range_y=0.0,
-                range_z=0.0,
-                padding_mode="reflection",
-            ),
-        ]
-    )
-    evalt = mt.Compose(
-        [
-            mt.GridPatchd(
-                keys=["input", "target"], patch_size=cfg.roi_size, pad_mode="reflect"
-            )
-        ]
-    )
-    test = mt.Compose(
-        [
-            mt.EnsureChannelFirstd(keys=["input"], channel_dim="no_channel"),
-            mt.AdjustContrastd(keys=["input"], gamma=cfg.gamma),
-            mt.ScaleIntensityd(keys=["input"]),
-            mt.Orientationd(keys=["input"], axcodes="RAS"),
-            mt.GridPatchd(keys=["input"], patch_size=cfg.roi_size, pad_mode="reflect"),
-        ]
-    )
-    return static, train, evalt, test
+    if transform.lower() == "static":
+        compose = mt.Compose(
+            [
+                mt.EnsureChannelFirstd(
+                    keys=["input", "target"], channel_dim="no_channel"
+                ),
+                mt.AdjustContrastd(keys=["input"], gamma=cfg.gamma),
+                mt.ScaleIntensityd(keys=["input"]),
+                mt.Orientationd(keys=["input", "target"], axcodes="RAS"),
+            ]
+        )
+    elif transform.lower() == "train":
+        compose = mt.Compose(
+            [
+                mt.RandCropByLabelClassesd(
+                    keys=["input", "target"],
+                    label_key="target",
+                    spatial_size=cfg.roi_size,
+                    num_samples=cfg.sub_batch_size,
+                    num_classes=2,
+                    ratios=[1, 1],
+                    warn=False,
+                ),
+                mt.RandFlipd(keys=["input", "target"], prob=0.5, spatial_axis=0),
+                mt.RandFlipd(keys=["input", "target"], prob=0.5, spatial_axis=1),
+                mt.RandFlipd(keys=["input", "target"], prob=0.5, spatial_axis=2),
+                mt.RandRotate90d(
+                    keys=["input", "target"], prob=0.75, max_k=3, spatial_axes=(0, 1)
+                ),
+                mt.RandRotated(
+                    keys=["input", "target"],
+                    prob=0.5,
+                    range_x=0.78,
+                    range_y=0.0,
+                    range_z=0.0,
+                    padding_mode="reflection",
+                ),
+            ]
+        )
+    elif transform.lower() == "validation":
+        compose = mt.Compose(
+            [
+                mt.GridPatchd(
+                    keys=["input", "target"],
+                    patch_size=cfg.roi_size,
+                    pad_mode="reflect",
+                )
+            ]
+        )
+    elif transform.lower() == "test":
+        compose = mt.Compose(
+            [
+                mt.EnsureChannelFirstd(keys=["input"], channel_dim="no_channel"),
+                mt.AdjustContrastd(keys=["input"], gamma=cfg.gamma),
+                mt.ScaleIntensityd(keys=["input"]),
+                mt.Orientationd(keys=["input"], axcodes="RAS"),
+                mt.GridPatchd(
+                    keys=["input"], patch_size=cfg.roi_size, pad_mode="reflect"
+                ),
+            ]
+        )
+    return compose
