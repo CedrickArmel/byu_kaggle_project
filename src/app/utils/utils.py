@@ -30,7 +30,6 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.optim as optim
-import torch_xla as xla
 from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
@@ -86,8 +85,8 @@ def get_callbacks(cfg: "DictConfig") -> "tuple[Callback, ...]":
     return chckpt_cb, lr_cb
 
 
-def get_data_loaders(
-    cfg: "DictConfig",
+def get_data_loader(
+    cfg: "DictConfig", df: "pd.DataFrame", mode: "str"
 ) -> "DataLoader | tuple[DataLoader, ...] | None":
     """
     Creates and returns PyTorch DataLoader objects for training, validation, or testing
@@ -96,10 +95,6 @@ def get_data_loaders(
         cfg (DictConfig): A configuration object containing the following attributes:
             - train (bool): Whether to create DataLoaders for training and validation.
             - test (bool): Whether to create a DataLoader for testing.
-            - train_df (DataFrame): DataFrame containing training data.
-            - val_df (DataFrame): DataFrame containing validation data.
-            - train_transforms (callable): Transformations to apply to training data.
-            - eval_transforms (callable): Transformations to apply to validation data.
             - batch_size (int): Batch size for training DataLoader.
             - batch_size_val (int): Batch size for validation and test DataLoaders.
             - num_workers (int): Number of worker threads for data loading.
@@ -109,70 +104,36 @@ def get_data_loaders(
             - shuffle (bool): Whether to shuffle the training data.
             - drop_last (bool): Whether to drop the last incomplete batch in training.
             - prefetch_factor (int): Number of batches to prefetch.
-            - tpu (bool): Whether training is being performed on a TPU.
-            - world_size (int): Number of processes participating in distributed training.
-            - rank (int): Rank of the current process in distributed training.
     Returns:
-        DataLoader | tuple[DataLoader, ...] | None:
-            - A tuple containing the training and validation DataLoaders if `cfg.train` is True.
-            - A single DataLoader for testing if `cfg.test` is True.
-            - None if neither `cfg.train` nor `cfg.test` is True.
+        DataLoader
     """
-
-    if cfg.train:
-        train_ds = BYUCustomDataset(
-            cfg, mode="train", df=cfg.train_df, aug=cfg.train_transforms
-        )
-        train_loader = DataLoader(
-            dataset=train_ds,
-            batch_size=cfg.batch_size,
-            num_workers=cfg.num_workers,
-            collate_fn=collate_fn,
-            pin_memory=cfg.pin_memory,
-            drop_last=cfg.drop_last,
-            prefetch_factor=cfg.prefetch_factor,
-        )
-
-        val_ds = BYUCustomDataset(
-            cfg, mode="validation", df=cfg.val_df, aug=cfg.eval_transforms
-        )
-        val_loader = DataLoader(
-            dataset=val_ds,
-            batch_size=cfg.batch_size_val,
-            num_workers=cfg.num_workers,
-            collate_fn=collate_fn,
-            pin_memory=cfg.val_pin_memory,
-            prefetch_factor=cfg.prefetch_factor,
-        )
-        return train_loader, val_loader
-
-    if cfg.test:
-        test_ds = BYUCustomDataset(cfg, df=cfg.test_df, mode="test")
-        test_loader = DataLoader(
-            dataset=test_ds,
-            batch_size=cfg.batch_size_val,
-            num_workers=cfg.num_workers,
-            collate_fn=collate_fn,
-            pin_memory=cfg.test_pin_memory,
-            prefetch_factor=cfg.prefetch_factor,
-        )
-        return test_loader
-    return None
+    # TODO: exclude from cfg: train_df, test_df, val_df, train_transforms, eval_transforms, static_transforms, test_transforms
+    dataset = BYUCustomDataset(cfg, df=df, mode=mode)
+    loader = DataLoader(
+        dataset=dataset,
+        batch_size=cfg.batch_size if mode == "train" else cfg.batch_size_val,
+        num_workers=cfg.num_workers,
+        collate_fn=collate_fn,
+        pin_memory=cfg.pin_memory,
+        prefetch_factor=cfg.prefetch_factor,
+    )
+    return loader
 
 
-def get_data(cfg: "DictConfig") -> "tuple[pd.DataFrame,...] | None":
+def get_data(cfg: "DictConfig", mode: "str" = "fit") -> "tuple[pd.DataFrame,...]":
     """
     Loads and splits a dataset into training and validation DataFrames based on the provided configuration.
     Args:
         cfg (DictConfig): A configuration object containing the following attributes:
             - df_path (str): Path to the CSV file containing the dataset.
-            - overfit (bool): Flag indicating whether to use a subset of the data for overfitting.
-            - overfit_tomos (list): List of tomo IDs to use when overfitting is enabled.
             - fold (int): Fold index for splitting the data. If -1, a default split is used.
     Returns:
         tuple[pd.DataFrame, pd.DataFrame]: A tuple containing the training DataFrame and validation DataFrame.
     """
-    if cfg.train:
+    if mode not in ["fit", "test"]:
+        raise ValueError("mode argument must be one of train, validation or test!")
+
+    if mode == "fit":
         df = pd.read_csv(cfg.df_path)
         if cfg.fold > -1:
             train_df = df[df.fold != cfg.fold]
@@ -180,8 +141,9 @@ def get_data(cfg: "DictConfig") -> "tuple[pd.DataFrame,...] | None":
         else:
             train_df = df[df.fold != 0]
             val_df = df[df.fold == 0]
-        return train_df, val_df
-    if cfg.test:
+        data = (train_df, val_df)
+
+    if mode == "test":
         test_tomo_id = sorted(
             [
                 path.split("/")[-1]
@@ -189,14 +151,11 @@ def get_data(cfg: "DictConfig") -> "tuple[pd.DataFrame,...] | None":
             ]
         )
         num_ids = list(range(0, len(test_tomo_id)))
-        test_df = pd.DataFrame(dict(tomo_id=test_tomo_id, id=num_ids))
-        return test_df
-    return None
+        data = pd.DataFrame(dict(tomo_id=test_tomo_id, id=num_ids))
+    return data
 
 
-def get_optimizer(
-    cfg: "DictConfig", model: "torch.nn.Module"
-) -> "optim.Optimizer | None":
+def get_optimizer(cfg: "DictConfig", model: "torch.nn.Module") -> "optim.Optimizer":
     """
     Creates and returns an optimizer based on the configuration provided.
     Args:
@@ -218,7 +177,9 @@ def get_optimizer(
     """
     params_ = model.parameters()
     if cfg.optimizer == "Adam":
-        return optim.Adam(params_, lr=cfg.lr, weight_decay=cfg.weight_decay)
+        optimizer: "optim.Optimizer" = optim.Adam(
+            params_, lr=cfg.lr, weight_decay=cfg.weight_decay
+        )
 
     elif cfg.optimizer == "AdamW_plus":
         nparams_ = list(model.named_parameters())
@@ -243,20 +204,20 @@ def get_optimizer(
                 "weight_decay": 0.0,
             },
         ]
-        return optim.AdamW(params, lr=cfg.lr)
+        optimizer = optim.AdamW(params, lr=cfg.lr)
 
     elif cfg.optimizer == "AdamW":
-        return optim.AdamW(params_, lr=cfg.lr, weight_decay=cfg.weight_decay)
+        optimizer = optim.AdamW(params_, lr=cfg.lr, weight_decay=cfg.weight_decay)
 
     elif cfg.optimizer == "SGD":
-        return optim.SGD(
+        optimizer = optim.SGD(
             params_,
             lr=cfg.lr,
             momentum=cfg.sgd_momentum,
             nesterov=cfg.sgd_nesterov,
             weight_decay=cfg.weight_decay,
         )
-    return None
+    return optimizer
 
 
 def get_multistep_schedule_with_warmup(
@@ -340,7 +301,7 @@ def get_linear_schedule_with_warmup(
 
 def get_scheduler(
     cfg: "DictConfig", optimizer: "optim.Optimizer", total_steps: "int"
-) -> "optim.lr_scheduler.LRScheduler | None":
+) -> "optim.lr_scheduler.LRScheduler":
     """
     Creates and returns a learning rate scheduler based on the provided configuration.
     Args:
@@ -363,7 +324,7 @@ def get_scheduler(
         optim.lr_scheduler.LRScheduler | None: The configured learning rate scheduler, or None if no valid scheduler type is specified.
     """
     if cfg.schedule == "steplr":
-        return optim.lr_scheduler.StepLR(
+        scheduler: "optim.lr_scheduler.LRScheduler" = optim.lr_scheduler.StepLR(
             optimizer,
             step_size=cfg.epochs_step
             * (total_steps // cfg.batch_size)
@@ -371,7 +332,7 @@ def get_scheduler(
             gamma=0.5,
         )
     elif cfg.schedule == "multistep":
-        return get_multistep_schedule_with_warmup(
+        scheduler = get_multistep_schedule_with_warmup(
             optimizer,
             warmup_steps=cfg.warmup,
             m=cfg.milestones,
@@ -382,7 +343,7 @@ def get_scheduler(
         )
 
     elif cfg.schedule == "linear":
-        return get_linear_schedule_with_warmup(
+        scheduler = get_linear_schedule_with_warmup(
             optimizer,
             num_warmup_steps=0,
             num_training_steps=cfg.max_epochs
@@ -392,10 +353,10 @@ def get_scheduler(
 
     elif cfg.schedule == "CosineAnnealingLR":
         T_max = int(np.ceil(0.5 * total_steps))
-        return optim.lr_scheduler.CosineAnnealingLR(
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=T_max, eta_min=1e-8
         )
-    return None
+    return scheduler
 
 
 def set_seed(seed: "int" = 57) -> None:
@@ -403,7 +364,3 @@ def set_seed(seed: "int" = 57) -> None:
     os.environ["PYTHONHASHSEED"] = str(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    xla.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.backends.cudnn.deterministic = False
-    torch.backends.cudnn.benchmark = True
