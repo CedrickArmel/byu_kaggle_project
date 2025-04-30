@@ -110,6 +110,8 @@ max_time: null
 min_steps: null
 val_check_interval: 1.0
 deterministic: warn
+# Fit
+ckpt_path: null
 
 # Training
 best_th: 0.5

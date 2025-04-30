@@ -48,7 +48,7 @@ def main(cfg: "DictConfig") -> "None":
 
     start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     cfg.default_root_dir = os.path.join(
-        "/kaggle/working/{cfg.backbone}",
+        f"/kaggle/working/{cfg.backbone}",
         f"seed_{cfg.seed}",
         f"fold{cfg.fold}",
         f"{start_time}",
