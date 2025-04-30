@@ -163,7 +163,6 @@ class FlexibleUNet(nn.Module):  # type: ignore[misc]
         encoder_channels = tuple([in_channels] + list(encoder["feature_channel"]))
         encoder_type = encoder["type"]
         self.encoder = encoder_type(**encoder_parameters)
-        print(decoder_channels)
 
         self.decoder = PatchedUNetDecoder(
             spatial_dims=spatial_dims,
@@ -299,7 +298,6 @@ class Net(nn.Module):  # type: ignore[misc]
         self.cfg = cfg
         self.backbone = FlexibleUNet(**cfg.backbone_args)
         self.mixup = Mixup(cfg.mixup_beta)
-        print(f"Net parameters: {human_format(count_parameters(self))}")
         self.lvl_weights = torch.from_numpy(cfg.lvl_weights)
         self.loss_fn = DenseCrossEntropy(
             class_weights=torch.from_numpy(cfg.class_weights)

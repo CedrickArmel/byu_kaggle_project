@@ -57,7 +57,7 @@ class BYUFbeta(Metric):
         ths = np.arange(0, self.cfg.max_th, 0.005)
         for t in ths:
             scores += [self._score(t, preds, targets)]
-            best_idx = int(np.argmax(scores))
+        best_idx = int(np.argmax(scores))
         best_th = float(ths[best_idx])
         best_score = float(scores[best_idx])
         return dict(byu_score=best_score, best_ths=best_th)
