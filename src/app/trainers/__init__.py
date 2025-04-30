@@ -20,6 +20,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .lightning import lightning_trainer
+from .lightning import get_lightning_trainer
 
-__all__ = ["lightning_trainer"]
+__all__ = ["get_lightning_trainer"]

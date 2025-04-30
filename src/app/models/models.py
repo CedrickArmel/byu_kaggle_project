@@ -20,7 +20,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from types import SimpleNamespace
 from typing import Any
 
 import torch
@@ -30,6 +29,7 @@ from monai.networks.nets.flexible_unet import (
     SegmentationHead,
     UNetDecoder,
 )
+from omegaconf import DictConfig
 from torch import nn
 from torch.distributions import Beta
 
@@ -163,7 +163,6 @@ class FlexibleUNet(nn.Module):  # type: ignore[misc]
         encoder_channels = tuple([in_channels] + list(encoder["feature_channel"]))
         encoder_type = encoder["type"]
         self.encoder = encoder_type(**encoder_parameters)
-        print(decoder_channels)
 
         self.decoder = PatchedUNetDecoder(
             spatial_dims=spatial_dims,
@@ -293,13 +292,12 @@ class Net(nn.Module):  # type: ignore[misc]
     to support sub_batches and avoid OOM errors.
     """
 
-    def __init__(self, cfg: "SimpleNamespace") -> None:
+    def __init__(self, cfg: "DictConfig") -> None:
         """Initialize the Net module."""
         super(Net, self).__init__()
         self.cfg = cfg
         self.backbone = FlexibleUNet(**cfg.backbone_args)
         self.mixup = Mixup(cfg.mixup_beta)
-        print(f"Net parameters: {human_format(count_parameters(self))}")
         self.lvl_weights = torch.from_numpy(cfg.lvl_weights)
         self.loss_fn = DenseCrossEntropy(
             class_weights=torch.from_numpy(cfg.class_weights)

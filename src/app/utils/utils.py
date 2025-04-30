@@ -24,7 +24,6 @@ import os
 import random
 from collections import defaultdict
 from glob import glob
-from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -32,9 +31,11 @@ import pandas as pd
 import torch
 import torch.optim as optim
 import torch_xla as xla
-from data.datasets import BYUCustomDataset
 from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
+from omegaconf import DictConfig
 from torch.utils.data import DataLoader
+
+from data import BYUCustomDataset
 
 
 def collate_fn(batch: "list[dict[str, Any]]") -> "dict[str, Any]":
@@ -61,7 +62,7 @@ def collate_fn(batch: "list[dict[str, Any]]") -> "dict[str, Any]":
     return batch_dict
 
 
-def get_callbacks(cfg: "SimpleNamespace") -> "tuple[Callback, ...]":
+def get_callbacks(cfg: "DictConfig") -> "tuple[Callback, ...]":
     chckpt_cb = ModelCheckpoint(
         filename=cfg.filename,
         monitor=cfg.monitor,
@@ -86,13 +87,13 @@ def get_callbacks(cfg: "SimpleNamespace") -> "tuple[Callback, ...]":
 
 
 def get_data_loaders(
-    cfg: "SimpleNamespace",
+    cfg: "DictConfig",
 ) -> "DataLoader | tuple[DataLoader, ...] | None":
     """
     Creates and returns PyTorch DataLoader objects for training, validation, or testing
     based on the provided configuration.
     Args:
-        cfg (SimpleNamespace): A configuration object containing the following attributes:
+        cfg (DictConfig): A configuration object containing the following attributes:
             - train (bool): Whether to create DataLoaders for training and validation.
             - test (bool): Whether to create a DataLoader for testing.
             - train_df (DataFrame): DataFrame containing training data.
@@ -159,11 +160,11 @@ def get_data_loaders(
     return None
 
 
-def get_data(cfg: "SimpleNamespace") -> "tuple[pd.DataFrame,...] | None":
+def get_data(cfg: "DictConfig") -> "tuple[pd.DataFrame,...] | None":
     """
     Loads and splits a dataset into training and validation DataFrames based on the provided configuration.
     Args:
-        cfg (SimpleNamespace): A configuration object containing the following attributes:
+        cfg (DictConfig): A configuration object containing the following attributes:
             - df_path (str): Path to the CSV file containing the dataset.
             - overfit (bool): Flag indicating whether to use a subset of the data for overfitting.
             - overfit_tomos (list): List of tomo IDs to use when overfitting is enabled.
@@ -194,12 +195,12 @@ def get_data(cfg: "SimpleNamespace") -> "tuple[pd.DataFrame,...] | None":
 
 
 def get_optimizer(
-    cfg: "SimpleNamespace", model: "torch.nn.Module"
+    cfg: "DictConfig", model: "torch.nn.Module"
 ) -> "optim.Optimizer | None":
     """
     Creates and returns an optimizer based on the configuration provided.
     Args:
-        cfg (SimpleNamespace): A configuration object containing the optimizer settings.
+        cfg (DictConfig): A configuration object containing the optimizer settings.
             Expected attributes:
                 - optimizer (str): The type of optimizer to use. Supported values are
                   "Adam", "AdamW_plus", "AdamW", and "SGD".
@@ -338,12 +339,12 @@ def get_linear_schedule_with_warmup(
 
 
 def get_scheduler(
-    cfg: "SimpleNamespace", optimizer: "optim.Optimizer", total_steps: "int"
+    cfg: "DictConfig", optimizer: "optim.Optimizer", total_steps: "int"
 ) -> "optim.lr_scheduler.LRScheduler | None":
     """
     Creates and returns a learning rate scheduler based on the provided configuration.
     Args:
-        cfg (SimpleNamespace): Configuration object containing the scheduler type and its parameters.
+        cfg (DictConfig): Configuration object containing the scheduler type and its parameters.
             - cfg.schedule (str): The type of scheduler to use. Options are:
                 - "steplr": StepLR scheduler.
                 - "multistep": MultiStepLR scheduler with warmup.

@@ -25,11 +25,10 @@ Derived from:
 https://www.kaggle.com/code/metric/czi-cryoet-84969?scriptVersionId=208227222&cellId=1
 """
 
-from types import SimpleNamespace
-
 import numpy as np
 import torch
 from numpy.typing import NDArray
+from omegaconf import DictConfig
 from scipy.spatial import KDTree
 from torchmetrics import Metric
 from torchmetrics.utilities import dim_zero_cat
@@ -40,9 +39,7 @@ class ParticipantVisibleError(Exception):
 
 
 class BYUFbeta(Metric):
-    def __init__(
-        self, cfg: "SimpleNamespace", tn_as_tp: "bool" = False, **kwargs
-    ) -> "None":
+    def __init__(self, cfg: "DictConfig", tn_as_tp: "bool" = False, **kwargs) -> "None":
         super().__init__(**kwargs)
         self.add_state(name="preds", default=[], dist_reduce_fx="cat")
         self.add_state(name="targets", default=[], dist_reduce_fx="cat")
@@ -60,7 +57,7 @@ class BYUFbeta(Metric):
         ths = np.arange(0, self.cfg.max_th, 0.005)
         for t in ths:
             scores += [self._score(t, preds, targets)]
-            best_idx = int(np.argmax(scores))
+        best_idx = int(np.argmax(scores))
         best_th = float(ths[best_idx])
         best_score = float(scores[best_idx])
         return dict(byu_score=best_score, best_ths=best_th)

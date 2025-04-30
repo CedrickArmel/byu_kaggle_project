@@ -25,18 +25,17 @@
 import datetime
 import os
 
-# from argparse import ArgumentParser
-from types import SimpleNamespace
-
+import hydra
 from models import LNet
-from trainers import lightning_trainer
+from omegaconf import DictConfig
+from trainers import get_lightning_trainer
 from utils import get_callbacks, get_data, get_data_loaders
 
-# from config import cfg
 from data import get_transforms
 
 
-def main(cfg: "SimpleNamespace") -> "None":
+@hydra.main(config_path="src/app/config", config_name="config")
+def main(cfg: "DictConfig") -> "None":
     cfg.train_df, cfg.val_df = get_data(cfg)
     (
         cfg.static_transforms,
@@ -62,7 +61,7 @@ def main(cfg: "SimpleNamespace") -> "None":
         backbone=cfg.backbone,
         pretrained=cfg.pretrained,
     )
-    trainer = lightning_trainer(cfg, [chckpt_cb, lr_cb])
+    trainer = get_lightning_trainer(cfg, [chckpt_cb, lr_cb])
     model = LNet(cfg)
     trainer.fit(
         model,
@@ -73,5 +72,4 @@ def main(cfg: "SimpleNamespace") -> "None":
 
 
 if __name__ == "__main__":
-    args: "SimpleNamespace" = ...
-    main(args)
+    main()

@@ -41,6 +41,9 @@ eval "$(pyenv virtualenv-init -)"
 # Poetry in PATH
 export PATH="/root/.local/bin:$PATH"
 
+# Enable SSH agent
+eval "$(ssh-agent -s)"
+
 EOF
 echo "✅ TPU environment setup complete. Reload your shell with: source ~/.bashrc"
 
@@ -49,6 +52,5 @@ source ~/.bashrc
 
 echo "🔄 Sync environment..."
 pyenv virtualenv system byu_project
-poetry sync
 
 echo "✅ Setup completed!"

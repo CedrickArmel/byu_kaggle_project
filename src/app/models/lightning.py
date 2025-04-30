@@ -21,13 +21,13 @@
 # SOFTWARE.
 
 import os
-from types import SimpleNamespace
 from typing import Any
 
 import lightning as L
 import torch
 from metrics import BYUFbeta
 from models import Net
+from omegaconf import DictConfig
 from processings import post_process_pipeline
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
@@ -39,19 +39,21 @@ from utils import get_multistep_schedule_with_warmup, get_optimizer
 class LNet(L.LightningModule):
     """Lightning wrapper for models.Net"""
 
-    def __init__(self, cfg: "SimpleNamespace") -> None:
+    def __init__(self, cfg: "DictConfig") -> None:
         """Init method called once"""
+        super().__init__()
         self.cfg = cfg
         self.model = Net(cfg)
-        if (
-            self.cfg.pretrained
-        ):  # TODO: double check whether it's the right place to freeze or in the setup() hook.
-            for param in self.model.backbone.encoder.parameters():
-                param.requires_grad = False
         self.score_metric = BYUFbeta(
             self.cfg, compute_on_cpu=True, dist_sync_on_step=False, dist_reduce_fx="cat"
         )
         self.validation_step_outputs: "list[torch.Tensor]" = []
+
+    def setup(self, stage: "str") -> "None":
+        """Called at the beginning of each stage in oder to build model dynamically."""
+        if stage == "fit" and self.cfg.pretrained:
+            for param in self.model.backbone.encoder.parameters():
+                param.requires_grad = False
 
     def forward(self, batch: "dict[str, Any]") -> "torch.Tensor":
         return self.model(batch)
@@ -107,6 +109,7 @@ class LNet(L.LightningModule):
             prog_bar=True,
             sync_dist=True,
         )
+        self.validation_step_outputs.append(preds)
         zyx = torch.unique(zyx, dim=0)
         self.score_metric.update(preds, zyx)
         return preds
@@ -143,6 +146,7 @@ class LNet(L.LightningModule):
         gradient_clip_algorithm: "Any | None" = None,
     ) -> "None":
         """Gradient clipping and tracking before/afater clipping"""
+        # TODO: if self.trainer.global_step % self.cfg.log_every_n_steps == 0:
         grads = [p.grad for p in self.parameters() if p.grad is not None]
         total_norm_before = torch.norm(
             torch.stack(
@@ -155,7 +159,6 @@ class LNet(L.LightningModule):
             gradient_clip_val=gradient_clip_val,
             gradient_clip_algorithm=gradient_clip_algorithm,
         )
-        # if self.trainer.global_step % self.cfg.log_every_n_steps == 0:
         grads = [p.grad for p in self.parameters() if p.grad is not None]
         total_norm_after = torch.norm(
             torch.stack(
