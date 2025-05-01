@@ -34,7 +34,7 @@ from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelChec
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
-from data import BYUCustomDataset
+from app.data import BYUCustomDataset
 
 
 def collate_fn(batch: "list[dict[str, Any]]") -> "dict[str, Any]":

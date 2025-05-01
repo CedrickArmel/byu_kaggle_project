@@ -28,6 +28,7 @@ isort = "^6.0.1"
 matplotlib = "^3.10.1"
 pre-commit = "^4.2.0"
 black = "^25.1.0"
+ipykernel = "^6.29.5"
 
 [tool.poetry.scripts]
 train = 'app.launcher:main'

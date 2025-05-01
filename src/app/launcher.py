@@ -29,10 +29,10 @@ import hydra
 
 from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import DictConfig
-from trainers import get_lightning_trainer
-from utils import get_callbacks, get_data, get_data_loader, set_seed
+from app.trainers import get_lightning_trainer
+from app.utils import get_callbacks, get_data, get_data_loader, set_seed
 
-from models import LNet
+from app.models import LNet
 
 
 
