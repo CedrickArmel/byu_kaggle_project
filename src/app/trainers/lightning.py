@@ -22,17 +22,19 @@
 
 import lightning as L
 from lightning.pytorch.callbacks import Callback
+from lightning.pytorch.loggers.tensorboard import TensorBoardLogger
 from omegaconf import DictConfig
 
 
 def get_lightning_trainer(cfg: "DictConfig", callbacks: "list[Callback]"):
+    logger = TensorBoardLogger(save_dir=cfg.output_dir, name=cfg.backbone)
     return L.Trainer(
         accelerator=cfg.accelerator,
         strategy=cfg.strategy,
         devices=cfg.devices,
         num_nodes=cfg.num_nodes,
         precision=cfg.precision,
-        logger=cfg.logger,
+        logger=[logger],
         callbacks=cfg.callbacks,
         fast_dev_run=cfg.fast_dev_run,
         max_epochs=cfg.max_epochs,

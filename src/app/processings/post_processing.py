@@ -102,6 +102,8 @@ def post_process_pipeline(
     Returns:
         torch.Tensor: The final coordinates and confidence scores.
     """
+    new_size = list(cfg.new_size)
+    roi_size = list(cfg.roi_size)
     img: "torch.Tensor" = net_output["logits"].detach()
     device: "torch.device" = img.device
 
@@ -118,14 +120,14 @@ def post_process_pipeline(
 
     img = F.interpolate(
         img,
-        size=(cfg.roi_size[0], cfg.roi_size[1], cfg.roi_size[2]),
+        size=(roi_size[0], roi_size[1], roi_size[2]),
         mode="trilinear",
         align_corners=False,
     )
 
-    out_size = get_output_size(img, locations, cfg.roi_size)
+    out_size = get_output_size(img, locations, roi_size)
 
-    rec_img = reconstruct(img, locations, out_size=out_size, crop_size=cfg.roi_size)
+    rec_img = reconstruct(img, locations, out_size=out_size, crop_size=roi_size)
 
     s = rec_img.shape[-3:]
     rec_img = F.interpolate(
@@ -143,7 +145,7 @@ def post_process_pipeline(
     bzyx: "torch.Tensor" = torch.stack(kps, -1)
     conf: "torch.Tensor" = y.squeeze()[kps]
 
-    delta = ((torch.tensor(s) - torch.tensor(cfg.new_size)) // 2).to(device)
+    delta = ((torch.tensor(s) - torch.tensor(new_size)) // 2).to(device)
     dims = torch.tensor(dims_, device=device, dtype=torch.int)
     b = bzyx[:, 0].to(torch.long)
     zyx = bzyx[:, 1:]

@@ -46,7 +46,9 @@ class LNet(L.LightningModule):
         self.cfg = cfg
         self.model = Net(cfg)
         self.score_metric = BYUFbeta(
-            self.cfg, compute_on_cpu=True, dist_sync_on_step=False, dist_reduce_fx="cat"
+            self.cfg,
+            compute_on_cpu=True,
+            dist_sync_on_step=False,
         )
         self.validation_step_outputs: "list[torch.Tensor]" = []
 
