@@ -88,8 +88,8 @@ reload_dataloaders_every_n_epochs: 0
 benchmark: null
 barebones: false
 detect_anomaly: false
-fast_dev_run: 10
-num_sanity_val_steps: 2
+fast_dev_run: False
+num_sanity_val_steps: 16
 overfit_batches: 0.0
 profiler: null
 plugins: null
@@ -97,7 +97,7 @@ default_root_dir: "/kaggle/working/"
 enable_checkpointing: true
 enable_model_summary: false
 enable_progress_bar: true
-logger: true
+logger: False
 log_every_n_steps: 24
 model_registry: null
 callbacks: null
