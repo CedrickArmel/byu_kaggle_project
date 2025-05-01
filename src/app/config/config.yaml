@@ -36,6 +36,7 @@ score_beta: 2
 
 # Model
 backbone: resnet10
+backbone_args: null
 class_weights: [256, 1]
 in_channels: 1
 mixup_p: 0.0
@@ -91,6 +92,7 @@ fast_dev_run: 10
 num_sanity_val_steps: 2
 overfit_batches: 0.0
 profiler: null
+plugins: null
 default_root_dir: "/kaggle/working/"
 enable_checkpointing: true
 enable_model_summary: false
@@ -105,7 +107,6 @@ limit_predict_batches: 1.0
 limit_test_batches: 1.0
 limit_train_batches: 1.0
 limit_val_batches: 1.0
-plugins: null
 max_epochs: 1000
 min_epochs: null
 max_steps: -1

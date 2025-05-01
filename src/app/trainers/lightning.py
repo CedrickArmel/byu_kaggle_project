@@ -21,6 +21,7 @@
 # SOFTWARE.
 
 import lightning as L
+from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.loggers.tensorboard import TensorBoardLogger
 from omegaconf import DictConfig

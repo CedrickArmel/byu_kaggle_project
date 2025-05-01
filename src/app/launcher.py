@@ -26,10 +26,14 @@ import datetime
 import os
 
 import hydra
-from models import LNet
+
+from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import DictConfig
 from trainers import get_lightning_trainer
 from utils import get_callbacks, get_data, get_data_loader, set_seed
+
+from models import LNet
+
 
 
 @hydra.main(config_path="./config", config_name="config")
