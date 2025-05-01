@@ -55,7 +55,7 @@ def collate_fn(batch: "list[dict[str, Any]]") -> "dict[str, Any]":
     for key in tensor_keys:
         batch_dict[key] = (
             torch.cat(batch_data[key])
-            if key in ["input", "target"]
+            if key in ["input", "target", "zyx"]
             else torch.stack(batch_data[key])
         )
     return batch_dict

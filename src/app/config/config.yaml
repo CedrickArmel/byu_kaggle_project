@@ -17,16 +17,16 @@ log_weight_decay: true
 
 # Dataset/DataLoader
 batch_size: 4
-batch_size_val: 2
+batch_size_val: 1
 drop_last: false
 pin_memory: false
 val_pin_memory: false
 test_pin_memory: false
-num_workers: 0
+num_workers: 20
 shuffle: false
 train_sub_epochs: 2
 val_sub_epochs: 1
-prefetch_factor: null
+prefetch_factor: 1
 
 # Metrics
 dt_multiplier: 1
