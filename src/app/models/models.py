@@ -22,6 +22,7 @@
 
 from typing import Any
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from monai.networks.nets.flexible_unet import (
@@ -298,9 +299,9 @@ class Net(nn.Module):  # type: ignore[misc]
         self.cfg = cfg
         self.backbone = FlexibleUNet(**cfg.backbone_args)
         self.mixup = Mixup(cfg.mixup_beta)
-        self.lvl_weights = torch.from_numpy(cfg.lvl_weights)
+        self.lvl_weights = torch.from_numpy(np.array(cfg.lvl_weights))
         self.loss_fn = DenseCrossEntropy(
-            class_weights=torch.from_numpy(cfg.class_weights)
+            class_weights=torch.from_numpy(np.array(cfg.class_weights))
         )
 
     def forward(self, batch: "dict[str, Any]") -> "dict[str, Any]":
