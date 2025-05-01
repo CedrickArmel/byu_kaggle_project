@@ -26,10 +26,14 @@ import datetime
 import os
 
 import hydra
-from models import LNet
+
+from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import DictConfig
 from trainers import get_lightning_trainer
 from utils import get_callbacks, get_data, get_data_loader, set_seed
+
+from models import LNet
+
 
 
 @hydra.main(config_path="./config", config_name="config")
@@ -56,7 +60,8 @@ def main(cfg: "DictConfig") -> "None":
         backbone=cfg.backbone,
         pretrained=cfg.pretrained,
     )
-    trainer = get_lightning_trainer(cfg, [chckpt_cb, lr_cb])
+    logger = TensorBoardLogger(save_dir=cfg.output_dir, name=cfg.backbone)
+    trainer = get_lightning_trainer(cfg, logger, [chckpt_cb, lr_cb])
     model = LNet(cfg)
     trainer.fit(
         model,

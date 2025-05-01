@@ -47,7 +47,7 @@ def get_transforms(cfg: "DictConfig", transform: "str" = "static") -> "mt.Transf
                 mt.RandCropByLabelClassesd(
                     keys=["input", "target"],
                     label_key="target",
-                    spatial_size=cfg.roi_size,
+                    spatial_size=list(cfg.roi_size),
                     num_samples=cfg.sub_batch_size,
                     num_classes=2,
                     ratios=[1, 1],
@@ -74,7 +74,7 @@ def get_transforms(cfg: "DictConfig", transform: "str" = "static") -> "mt.Transf
             [
                 mt.GridPatchd(
                     keys=["input", "target"],
-                    patch_size=cfg.roi_size,
+                    patch_size=list(cfg.roi_size),
                     pad_mode="reflect",
                 )
             ]
@@ -87,7 +87,7 @@ def get_transforms(cfg: "DictConfig", transform: "str" = "static") -> "mt.Transf
                 mt.ScaleIntensityd(keys=["input"]),
                 mt.Orientationd(keys=["input"], axcodes="RAS"),
                 mt.GridPatchd(
-                    keys=["input"], patch_size=cfg.roi_size, pad_mode="reflect"
+                    keys=["input"], patch_size=list(cfg.roi_size), pad_mode="reflect"
                 ),
             ]
         )
