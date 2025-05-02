@@ -111,7 +111,7 @@ class LNet(L.LightningModule):
             on_epoch=True,
             logger=True,
             prog_bar=True,
-            sync_dist=True,
+            sync_dist=False,
         )
         self.validation_step_outputs.append(preds)
         zyx = torch.unique(zyx, dim=0)

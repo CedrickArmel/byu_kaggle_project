@@ -21,6 +21,7 @@
 # SOFTWARE.
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from glob import glob
 from typing import Any
 
@@ -140,9 +141,9 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
         """
         mode = "train" if self.mode == "validation" else self.mode
         slices_path = os.path.join(self.data_folder, mode, tomo_id, "*.jpg")
-        image = torch.stack(
-            [load_image(path) for path in sorted(glob(slices_path, recursive=True))]
-        ).squeeze()
+        with ThreadPoolExecutor() as executor:
+            slices = list(executor.map(load_image, sorted(glob(slices_path, recursive=True))))
+        image = torch.stack(slices).squeeze()
         return image
 
     def get_locs_n_vxs(

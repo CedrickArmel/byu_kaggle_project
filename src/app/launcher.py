@@ -60,8 +60,9 @@ def main(cfg: "DictConfig") -> "None":
         backbone=cfg.backbone,
         pretrained=cfg.pretrained,
     )
-    logger = TensorBoardLogger(save_dir=cfg.output_dir, name=cfg.backbone)
-    trainer = get_lightning_trainer(cfg, logger, [chckpt_cb, lr_cb])
+    logger = TensorBoardLogger(save_dir=cfg.output_dir, name=cfg.backbone) if cfg.logger else False
+    callbacks = [chckpt_cb, lr_cb] if not cfg.fast_dev_run else None
+    trainer = get_lightning_trainer(cfg, logger, callbacks)
     model = LNet(cfg)
     trainer.fit(
         model,
