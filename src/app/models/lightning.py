@@ -85,15 +85,17 @@ class LNet(L.LightningModule):
     ) -> "torch.Tensor":
         output_dict = self(batch)
         loss = output_dict["loss"]
-        self.log(
-            "train_loss",
-            loss,
-            on_step=True,
-            on_epoch=True,
-            logger=True,
-            prog_bar=True,
-            sync_dist=True,
-        )
+        if self.trainer.is_global_zero:
+            self.log(
+                "train_loss",
+                loss,
+                on_step=True,
+                on_epoch=True,
+                logger=True,
+                prog_bar=True,
+                sync_dist=False,
+                rank_zero_only=True
+            )
         return loss
 
     def validation_step(
@@ -104,15 +106,17 @@ class LNet(L.LightningModule):
         output_dict = self(batch)
         loss = output_dict["loss"]
         preds = post_process_pipeline(self.cfg, output_dict)
-        self.log(
-            "val_loss",
-            loss,
-            on_step=True,
-            on_epoch=True,
-            logger=True,
-            prog_bar=True,
-            sync_dist=False,
-        )
+        if self.trainer.is_global_zero:
+            self.log(
+                "val_loss",
+                loss,
+                on_step=False,
+                on_epoch=True,
+                logger=True,
+                prog_bar=True,
+                sync_dist=True,
+                rank_zero_only=True
+            )
         self.validation_step_outputs.append(preds)
         zyx = torch.unique(zyx, dim=0)
         self.score_metric.update(preds, zyx)
