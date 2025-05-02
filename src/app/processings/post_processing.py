@@ -137,13 +137,13 @@ def post_process_pipeline(
         align_corners=False,
     )
 
-    preds = rec_img.softmax(1)
+    preds: "torch.Tensor" = rec_img.softmax(1)
 
-    p1: "torch.Tensor" = preds[:, 0, :][None,]
-    y: "torch.Tensor" = simple_nms(p1, nms_radius=cfg.nms_radius)
-    kps: "tuple[torch.Tensor, ...]" = torch.where(y.squeeze() > 0)
+    preds = preds[:, 0, :][None,]
+    nms: "torch.Tensor" = simple_nms(preds, nms_radius=cfg.nms_radius)
+    kps: "tuple[torch.Tensor, ...]" = torch.where(nms.squeeze(dim=0) > 0)
     bzyx: "torch.Tensor" = torch.stack(kps, -1)
-    conf: "torch.Tensor" = y.squeeze()[kps]
+    conf: "torch.Tensor" = nms.squeeze(dim=0)[kps]
 
     delta = ((torch.tensor(s) - torch.tensor(new_size)) // 2).to(device)
     dims = torch.tensor(dims_, device=device, dtype=torch.int)
