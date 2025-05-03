@@ -31,7 +31,6 @@ from omegaconf import DictConfig
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torchmetrics.utilities import dim_zero_cat
-from torchmetrics.utilities.distributed import gather_all_tensors
 from app.utils import get_multistep_schedule_with_warmup, get_optimizer
 from app.metrics import BYUFbeta
 from app.processings import post_process_pipeline
@@ -123,25 +122,29 @@ class LNet(L.LightningModule):
         """Called after the epoch ends to agg preds and logging"""
         metrics = self.score_metric.compute()
         preds = dim_zero_cat(self.validation_step_outputs)
-        preds = dim_zero_cat(gather_all_tensors(preds))
+        preds = dim_zero_cat(self.all_gather(preds))  # preds should have the same size across all device/processes
+        preds = preds.cpu()
         self.log_dict(
             metrics,
             on_step=False,
             on_epoch=True,
             logger=True,
             prog_bar=True,
-            sync_dist=True,
+            sync_dist=False,
         )
+        
+        self.score_metric.reset()
+        self.validation_step_outputs.clear()
+
         if self.trainer.is_global_zero:
             torch.save(
-                preds.cpu(),
+                preds,
                 os.path.join(
                     self.cfg.default_root_dir,
                     f"val_epoch_{self.current_epoch}_end_step{self.global_step}.pt",
                 ),
             )
-        self.score_metric.reset()
-        self.validation_step_outputs.clear()
+
 
     def configure_gradient_clipping(
         self,
