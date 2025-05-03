@@ -138,6 +138,7 @@ seed: 57
 
 # Post-Processing
 nms_radius: 16
+topk: 20
 
 # Transforms
 gamma: 2
