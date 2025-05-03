@@ -28,7 +28,10 @@ from omegaconf import DictConfig
 
 
 def get_output_size(
-    img: "torch.Tensor", locations: "torch.Tensor", roi_size: "list[int]"
+    img: "torch.Tensor",
+    locations: "torch.Tensor",
+    roi_size: "torch.Tensor",
+    device: "torch.device",
 ) -> "torch.Tensor":
     """Get the output size of the reconstructed image.
     Args:
@@ -39,12 +42,13 @@ def get_output_size(
         torch.Tensor: The output size of the reconstructed image.
     """
     shapes = locations.max(2)[0]
-    output_size = torch.zeros(5)
-    s = torch.unique(shapes, dim=0).squeeze()
-    s = [s[i] + roi_size[i] for i in range(len(s))]
+    output_size = torch.zeros(5, device=device)
+    s: "torch.Tensor" = torch.unique(shapes, dim=0).squeeze().to(device)
+    # s = [s[i] + roi_size[i] for i in range(len(s))]
+    s = s + roi_size
     output_size[0] = shapes.shape[0]
     output_size[1] = img.shape[1]
-    output_size[2:] = torch.tensor(s)
+    output_size[2:] = s
     return output_size.to(torch.int)
 
 
@@ -52,7 +56,8 @@ def reconstruct(
     img: "torch.Tensor",
     locations: "torch.Tensor",
     out_size: "torch.Tensor",
-    crop_size: "list[int]",
+    crop_size: "torch.Tensor",
+    device: "torch.device",
 ) -> "torch.Tensor":
     """Reconstruct the image from the detected points.
     Args:
@@ -63,7 +68,7 @@ def reconstruct(
     Returns:
         torch.Tensor: The reconstructed image tensor.
     """
-    reconstructed_img = torch.zeros(tuple(out_size), device=img.device)
+    reconstructed_img = torch.zeros(out_size.tolist(), device=device)
     reshape = list([locations.shape[0], locations.shape[2]]) + list(img.shape[1:])
     image = img.reshape(reshape)
     for i in range(out_size[0]):
@@ -102,88 +107,71 @@ def post_process_pipeline(
     Returns:
         torch.Tensor: The final coordinates and confidence scores.
     """
-    new_size = list(cfg.new_size)
-    roi_size = list(cfg.roi_size)
+    device = net_output["logits"].device
+    new_size = torch.tensor(cfg.new_size, device=net_output["logits"].device)
+    roi_size = torch.tensor(cfg.roi_size, device=net_output["logits"].device)
+
     img: "torch.Tensor" = net_output["logits"].detach()
-    device: "torch.device" = img.device
 
-    locations: "torch.Tensor" = net_output["location"].cpu()
+    locations: "torch.Tensor" = net_output["location"]
     scales: "torch.Tensor" = net_output["scale"]
-
-    tomo_ids: "list[int]" = [
-        net_output["id"][i] for i in range(0, len(net_output["id"]), locations.shape[2])
-    ]
-    dims_: "list[torch.Size]" = [
-        net_output["dims"][i]
-        for i in range(0, len(net_output["dims"]), locations.shape[2])
-    ]
+    tomo_ids: "torch.Tensor" = torch.tensor(net_output["id"], device=device)
 
     img = F.interpolate(
         img,
-        size=(roi_size[0], roi_size[1], roi_size[2]),
+        size=roi_size.tolist(),
         mode="trilinear",
         align_corners=False,
     )
 
-    out_size = get_output_size(img, locations, roi_size)
+    out_size = get_output_size(img, locations, roi_size, device)
+    rec_img = reconstruct(
+        img=img,
+        locations=locations,
+        out_size=out_size,
+        crop_size=roi_size,
+        device=device,
+    )
 
-    rec_img = reconstruct(img, locations, out_size=out_size, crop_size=roi_size)
+    s = torch.tensor(rec_img.shape[-3:], device=device)
+    delta = (s - new_size) // 2  # delta to remove padding added during transforms
+    dz, dy, dx = delta.tolist()
+    nz, ny, nx = new_size.tolist()
 
-    s = rec_img.shape[-3:]
+    rec_img = rec_img[:, :, dz : nz + dz, dy : ny + dy, dx : nx + dx]
+
     rec_img = F.interpolate(
         rec_img,
-        size=(s[0] // 2, s[1] // 2, s[2] // 2),
+        size=[d // 2 for d in new_size.tolist()],
         mode="trilinear",
         align_corners=False,
     )
 
     preds: "torch.Tensor" = rec_img.softmax(1)
-
     preds = preds[:, 0, :][None,]
-    nms: "torch.Tensor" = simple_nms(preds, nms_radius=cfg.nms_radius)
-    kps: "tuple[torch.Tensor, ...]" = torch.where(nms.squeeze(dim=0) > 0)
-    bzyx: "torch.Tensor" = torch.stack(kps, -1)
-    conf: "torch.Tensor" = nms.squeeze(dim=0)[kps]
+    nms: "torch.Tensor" = simple_nms(preds, nms_radius=cfg.nms_radius)  # (B,1, D, H, W)
+    nms = nms.squeeze(dim=1)  # (B, D, H, W)
 
-    delta = ((torch.tensor(s) - torch.tensor(new_size)) // 2).to(device)
-    dims = torch.tensor(dims_, device=device, dtype=torch.int)
-    b = bzyx[:, 0].to(torch.long)
-    zyx = bzyx[:, 1:]
-    zyx = (
-        (((zyx * 2) - delta) / scales[b]).round().to(torch.int)
-    )  # delta to remove padding added during transforms
-    z, y, x = zyx[:, 0], zyx[:, 1], zyx[:, 2]
-    ids_: "list[int]" = [tomo_ids[int(bb)] for bb in b]
-    conf = conf.to(torch.float32)
-
-    dims_tensor: "torch.Tensor" = dims[b]
-    in_bounds = (
-        (z > 0)
-        & (z < dims_tensor[:, 0])
-        & (y > 0)
-        & (y < dims_tensor[:, 1])
-        & (x > 0)
-        & (x < dims_tensor[:, 2])
-        & (conf > 0.01)
+    flat_nms = nms.reshape(nms.shape[0], -1)  # (B, D*H*W)
+    conf, indices = torch.topk(flat_nms, k=cfg.topk, dim=1)
+    zyx = torch.stack(torch.unravel_index(indices, nms.shape[-3:]), dim=-1)  # (B, K, 3)
+    b = (
+        torch.arange(zyx.shape[0], device=device)
+        .unsqueeze(1)
+        .expand(zyx.shape[0], cfg.topk)
     )
 
-    z = z[in_bounds]
-    y = y[in_bounds]
-    x = x[in_bounds]
-    conf = conf[in_bounds]
-    ids_ = [ids_[i] for i in in_bounds.nonzero(as_tuple=True)[0]]
-    empty_tomos = [tid for tid in tomo_ids if tid not in set(ids_)]
+    b = b.reshape(-1, 1)
+    conf = conf.reshape(-1, 1)
+    zyx = zyx.reshape(-1, 3)
 
-    if len(empty_tomos) > 0:
-        dummy_coords = torch.full(
-            (len(empty_tomos),), -1, dtype=torch.int, device=device
-        )
-        dummy_conf = torch.zeros(len(empty_tomos), dtype=torch.float32, device=device)
-        z = torch.cat([z, dummy_coords])
-        y = torch.cat([y, dummy_coords])
-        x = torch.cat([x, dummy_coords])
-        conf = torch.cat([conf, dummy_conf])
-        ids_.extend(empty_tomos)
-    ids: "torch.Tensor" = torch.tensor(ids_, device=device)
+    zyx = ((zyx * 2) / scales[b]).round().to(torch.int)
+
+    z, y, x = zyx[:, 0], zyx[:, 1], zyx[:, 2]
+    b = b.to(torch.long)
+    conf = conf.to(torch.float32)
+
+    ids: "torch.Tensor" = tomo_ids[b]
+
     output: "torch.Tensor" = torch.stack([z, y, x, ids, conf], dim=1)
     return output

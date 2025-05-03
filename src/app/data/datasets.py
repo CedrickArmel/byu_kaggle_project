@@ -69,7 +69,7 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
         self.cfg = cfg
         self.mode = mode
         self.data_folder = cfg.data_folder
-        self.new_size: "tuple[int]" = list(cfg.new_size)
+        self.new_size: "tuple[int]" = tuple(cfg.new_size)
         self.df: "pd.DataFrame" = df
         self.tomo_list: "list[str]" = sorted(self.df.tomo_id.unique().tolist())
 

@@ -88,7 +88,11 @@ class BYUFbeta(Metric):
     ) -> "tuple[torch.Tensor, ...]":
         ut_preds = torch.unique(preds[torch.where(preds[:, -1] < t)][:, :-1], dim=0)
         ot_preds = torch.unique(preds[torch.where(preds[:, -1] >= t)][:, :-1], dim=0)
-        targets = torch.unique(targets)
+
+        select_ut = torch.isin(ut_preds[:, -1], ot_preds[:, -1])
+        ut_preds = ut_preds[~select_ut]
+
+        targets = torch.unique(targets, dim=0)
         ntargets = torch.unique(targets[torch.where(targets[:, 0] == -1)], dim=0)
         ptargets = torch.unique(targets[torch.where(targets[:, 0] >= 0)], dim=0)
         return ut_preds, ot_preds, ntargets, ptargets
