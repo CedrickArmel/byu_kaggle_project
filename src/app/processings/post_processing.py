@@ -162,16 +162,17 @@ def post_process_pipeline(
     )
 
     b = b.reshape(-1, 1)
-    conf = conf.reshape(-1, 1)
     zyx = zyx.reshape(-1, 3)
 
     zyx = ((zyx * 2) / scales[b]).round().to(torch.int)
-
-    z, y, x = zyx[:, 0], zyx[:, 1], zyx[:, 2]
     b = b.to(torch.long)
     conf = conf.to(torch.float32)
 
     ids: "torch.Tensor" = tomo_ids[b]
 
-    output: "torch.Tensor" = torch.stack([z, y, x, ids, conf], dim=1)
+    ids = ids.reshape(-1, 1)
+    conf = conf.reshape(-1, 1)
+    zyx = zyx.reshape(-1, 3)
+
+    output: "torch.Tensor" = torch.cat([zyx, ids, conf], dim=1)
     return output
