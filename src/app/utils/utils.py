@@ -34,7 +34,7 @@ from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelChec
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
-from data import BYUCustomDataset
+from app.data import BYUCustomDataset
 
 
 def collate_fn(batch: "list[dict[str, Any]]") -> "dict[str, Any]":
@@ -55,7 +55,7 @@ def collate_fn(batch: "list[dict[str, Any]]") -> "dict[str, Any]":
     for key in tensor_keys:
         batch_dict[key] = (
             torch.cat(batch_data[key])
-            if key in ["input", "target"]
+            if key in ["input", "target", "zyx"]
             else torch.stack(batch_data[key])
         )
     return batch_dict
@@ -112,10 +112,10 @@ def get_data_loader(
     loader = DataLoader(
         dataset=dataset,
         batch_size=cfg.batch_size if mode == "train" else cfg.batch_size_val,
-        num_workers=cfg.num_workers,
+        # num_workers=cfg.num_workers,
         collate_fn=collate_fn,
-        pin_memory=cfg.pin_memory,
-        prefetch_factor=cfg.prefetch_factor,
+        # pin_memory=cfg.pin_memory,
+        # prefetch_factor=cfg.prefetch_factor,
     )
     return loader
 

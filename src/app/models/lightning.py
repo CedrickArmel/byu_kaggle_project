@@ -25,15 +25,16 @@ from typing import Any
 
 import lightning as L
 import torch
-from metrics import BYUFbeta
+
 from omegaconf import DictConfig
-from processings import post_process_pipeline
+
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torchmetrics.utilities import dim_zero_cat
 from torchmetrics.utilities.distributed import gather_all_tensors
-from utils import get_multistep_schedule_with_warmup, get_optimizer
-
+from app.utils import get_multistep_schedule_with_warmup, get_optimizer
+from app.metrics import BYUFbeta
+from app.processings import post_process_pipeline
 from .models import Net
 
 
@@ -84,15 +85,17 @@ class LNet(L.LightningModule):
     ) -> "torch.Tensor":
         output_dict = self(batch)
         loss = output_dict["loss"]
-        self.log(
-            "train_loss",
-            loss,
-            on_step=True,
-            on_epoch=True,
-            logger=True,
-            prog_bar=True,
-            sync_dist=True,
-        )
+        if self.trainer.is_global_zero:
+            self.log(
+                "train_loss",
+                loss,
+                on_step=True,
+                on_epoch=True,
+                logger=True,
+                prog_bar=True,
+                sync_dist=False,
+                rank_zero_only=True
+            )
         return loss
 
     def validation_step(
@@ -103,15 +106,17 @@ class LNet(L.LightningModule):
         output_dict = self(batch)
         loss = output_dict["loss"]
         preds = post_process_pipeline(self.cfg, output_dict)
-        self.log(
-            "val_loss",
-            loss,
-            on_step=True,
-            on_epoch=True,
-            logger=True,
-            prog_bar=True,
-            sync_dist=True,
-        )
+        if self.trainer.is_global_zero:
+            self.log(
+                "val_loss",
+                loss,
+                on_step=False,
+                on_epoch=True,
+                logger=True,
+                prog_bar=True,
+                sync_dist=True,
+                rank_zero_only=True
+            )
         self.validation_step_outputs.append(preds)
         zyx = torch.unique(zyx, dim=0)
         self.score_metric.update(preds, zyx)

@@ -15,13 +15,13 @@ cat << 'EOF' >> ~/.ssh/config
 
 Host github.com
   AddKeysToAgent yes
-  IdentityFile /kaggle/working/.ssh/id_ed25519
+  IdentityFile /kaggle/input/ssh-keys/kaggle_ssh
 
 EOF
 
 echo "🔄 Securing SSH key ..."
-chmod 600 /kaggle/working/.ssh/id_ed25519
-ssh-add /kaggle/working/.ssh/id_ed25519
+chmod 600 /kaggle/input/ssh-keys/kaggle_ssh
+ssh-add /kaggle/input/ssh-keys/kaggle_ssh
 
 git config --global user.name "Cédrick-Armel YEBOUET"
 git config --global user.email "35418979+CedrickArmel@users.noreply.github.com"
