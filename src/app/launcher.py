@@ -26,15 +26,12 @@ import datetime
 import os
 
 import hydra
-
 from lightning.pytorch.loggers import TensorBoardLogger
+from models import LNet
 from omegaconf import DictConfig
 from app.trainers import get_lightning_trainer
 from app.utils import get_callbacks, get_data, get_data_loader, set_seed
-
 from app.models import LNet
-
-
 
 @hydra.main(config_path="./config", config_name="config")
 def main(cfg: "DictConfig") -> "None":
@@ -52,6 +49,7 @@ def main(cfg: "DictConfig") -> "None":
         f"fold{cfg.fold}",
         f"{start_time}",
     )
+    os.makedirs(cfg.default_root_dir, exist_ok=True)
 
     cfg.backbone_args = dict(
         spatial_dims=cfg.spatial_dims,

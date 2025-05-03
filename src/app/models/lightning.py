@@ -106,20 +106,17 @@ class LNet(L.LightningModule):
         output_dict = self(batch)
         loss = output_dict["loss"]
         preds = post_process_pipeline(self.cfg, output_dict)
-        if self.trainer.is_global_zero:
-            self.log(
-                "val_loss",
-                loss,
-                on_step=False,
-                on_epoch=True,
-                logger=True,
-                prog_bar=True,
-                sync_dist=True,
-                rank_zero_only=True
-            )
         self.validation_step_outputs.append(preds)
-        zyx = torch.unique(zyx, dim=0)
         self.score_metric.update(preds, zyx)
+        self.log(
+            "val_loss",
+            loss,
+            on_step=True,
+            on_epoch=True,
+            logger=True,
+            prog_bar=True,
+            sync_dist=True,
+        )
         return preds
 
     def on_validation_epoch_end(self) -> "None":
@@ -136,9 +133,8 @@ class LNet(L.LightningModule):
             sync_dist=True,
         )
         if self.trainer.is_global_zero:
-            os.makedirs(self.cfg.default_root_dir, exist_ok=True)
             torch.save(
-                preds,
+                preds.cpu(),
                 os.path.join(
                     self.cfg.default_root_dir,
                     f"val_epoch_{self.current_epoch}_end_step{self.global_step}.pt",
