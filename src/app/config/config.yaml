@@ -93,7 +93,7 @@ barebones: false
 detect_anomaly: false
 fast_dev_run: false
 num_sanity_val_steps: 0
-overfit_batches: 8
+overfit_batches: 1
 profiler: null
 plugins: null
 default_root_dir: "/kaggle/working/"
@@ -104,7 +104,7 @@ logger: true
 log_every_n_steps: 1
 model_registry: null
 callbacks: null
-check_val_every_n_epoch: 1
+check_val_every_n_epoch: null
 inference_mode: true
 limit_predict_batches: 1.0
 limit_test_batches: 1.0
@@ -115,7 +115,7 @@ min_epochs: null
 max_steps: -1
 max_time: null
 min_steps: null
-val_check_interval: 1.0
+val_check_interval: 100
 deterministic: "warn"
 # Fit
 ckpt_path: null

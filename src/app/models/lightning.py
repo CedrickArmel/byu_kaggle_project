@@ -64,9 +64,7 @@ class LNet(L.LightningModule):
 
     def configure_optimizers(self) -> "dict[str, Any]":
         """Return the optimizer and an optionnal lr_scheduler"""
-        training_steps: "int" = int(
-            self.trainer.num_training_batches * self.cfg.max_epochs
-        )
+        training_steps: "int" = self.trainer.num_training_batches * self.cfg.max_epochs
         optimizer: "Optimizer | None" = get_optimizer(self.cfg, self.model)
         scheduler: LRScheduler = (
             get_multistep_schedule_with_warmup(
