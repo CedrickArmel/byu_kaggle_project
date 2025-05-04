@@ -25,15 +25,15 @@ from typing import Any
 
 import lightning as L
 import torch
-
 from omegaconf import DictConfig
-
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torchmetrics.utilities import dim_zero_cat
-from app.utils import get_multistep_schedule_with_warmup, get_optimizer
+
 from app.metrics import BYUFbeta
 from app.processings import post_process_pipeline
+from app.utils import get_multistep_schedule_with_warmup, get_optimizer
+
 from .models import Net
 
 
@@ -64,15 +64,22 @@ class LNet(L.LightningModule):
 
     def configure_optimizers(self) -> "dict[str, Any]":
         """Return the optimizer and an optionnal lr_scheduler"""
-        training_steps: "int" = self.trainer.num_training_batches * self.cfg.max_epochs
-        optimizer: "Optimizer | None" = get_optimizer(self.cfg, self.model)
-        scheduler: LRScheduler = get_multistep_schedule_with_warmup(
-            optimizer,
-            warmup_steps=self.cfg.warmup,
-            m=self.cfg.milestones,
-            training_steps=training_steps,
-            end_lambda=self.cfg.end_lambda,
+        training_steps: "int" = int(
+            self.trainer.num_training_batches * self.cfg.max_epochs
         )
+        optimizer: "Optimizer | None" = get_optimizer(self.cfg, self.model)
+        scheduler: LRScheduler = (
+            get_multistep_schedule_with_warmup(
+                optimizer,
+                warmup_steps=self.cfg.warmup,
+                m=self.cfg.milestones,
+                training_steps=training_steps,
+                end_lambda=self.cfg.end_lambda,
+            )
+            if self.cfg.overfit_batches <= 0
+            else None
+        )
+
         return dict(
             optimizer=optimizer,
             lr_scheduler=dict(
@@ -94,7 +101,7 @@ class LNet(L.LightningModule):
                 logger=True,
                 prog_bar=True,
                 sync_dist=False,
-                rank_zero_only=True
+                rank_zero_only=True,
             )
         return loss
 
@@ -134,18 +141,17 @@ class LNet(L.LightningModule):
             prog_bar=True,
             sync_dist=True,
         )
-        
+
         torch.save(
             preds,
             os.path.join(
                 self.cfg.default_root_dir,
                 f"val_epoch_{self.current_epoch}_end_step{self.global_step}_rank{self.global_rank}.pt",
-                )
-            )
-    
+            ),
+        )
+
         self.score_metric.reset()
         self.validation_step_outputs.clear()
-
 
     def configure_gradient_clipping(
         self,

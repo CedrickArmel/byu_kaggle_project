@@ -113,7 +113,7 @@ def get_data_loader(
         dataset=dataset,
         batch_size=cfg.batch_size if mode == "train" else cfg.batch_size_val,
         collate_fn=collate_fn,
-        shuffle=cfg.shuffle if mode == "train" else False
+        shuffle=cfg.shuffle if mode == "train" else False,
     )
     return loader
 
@@ -237,7 +237,7 @@ def get_multistep_schedule_with_warmup(
 
     def create_milestones(steps: "int", m: "int") -> "list[int]":
         """returns a list of milestones for the given number of steps and m."""
-        g = steps // m
+        g = int(steps // m)
         milestones = []
         for i in range(1, m + 1):
             milestones += [i] * g
