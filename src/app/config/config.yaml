@@ -16,15 +16,15 @@ log_momentum: true
 log_weight_decay: true
 
 # Dataset/DataLoader
-batch_size: 4
+batch_size: 8
 batch_size_val: 1
 drop_last: false
 pin_memory: false
 val_pin_memory: false
 test_pin_memory: false
 num_workers: 10
-shuffle: false
-train_sub_epochs: 2
+shuffle: true
+train_sub_epochs: 8
 val_sub_epochs: 1
 prefetch_factor: 2
 
@@ -91,16 +91,16 @@ reload_dataloaders_every_n_epochs: 0
 benchmark: null
 barebones: false
 detect_anomaly: false
-fast_dev_run: true
+fast_dev_run: false
 num_sanity_val_steps: 0
-overfit_batches: 0.0
+overfit_batches: 8
 profiler: null
 plugins: null
 default_root_dir: "/kaggle/working/"
 enable_checkpointing: true
 enable_model_summary: false
 enable_progress_bar: true
-logger: False
+logger: true
 log_every_n_steps: 1
 model_registry: null
 callbacks: null
@@ -110,7 +110,7 @@ limit_predict_batches: 1.0
 limit_test_batches: 1.0
 limit_train_batches: 1.0
 limit_val_batches: 1.0
-max_epochs: 1000
+max_epochs: 100
 min_epochs: null
 max_steps: -1
 max_time: null
@@ -144,4 +144,5 @@ topk: 20
 gamma: 2
 new_size: [288, 480, 480]
 roi_size: [96, 96, 96]
-sub_batch_size: 2
+sub_batch_size: 3
+ratios: [1, 2]

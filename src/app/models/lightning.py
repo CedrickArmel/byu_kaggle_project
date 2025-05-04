@@ -48,7 +48,7 @@ class LNet(L.LightningModule):
         self.score_metric = BYUFbeta(
             self.cfg,
             compute_on_cpu=True,
-            dist_sync_on_step=False,
+            dist_sync_on_step=True,
         )
         self.validation_step_outputs: "list[torch.Tensor]" = []
 
@@ -57,6 +57,7 @@ class LNet(L.LightningModule):
         if stage == "fit" and self.cfg.pretrained:
             for param in self.model.backbone.encoder.parameters():
                 param.requires_grad = False
+        self.cfg.lr *= self.trainer.world_size
 
     def forward(self, batch: "dict[str, Any]") -> "torch.Tensor":
         return self.model(batch)
@@ -122,28 +123,28 @@ class LNet(L.LightningModule):
         """Called after the epoch ends to agg preds and logging"""
         metrics = self.score_metric.compute()
         preds = dim_zero_cat(self.validation_step_outputs)
-        preds = dim_zero_cat(self.all_gather(preds))  # preds should have the same size across all device/processes
+
         preds = preds.cpu()
+
         self.log_dict(
             metrics,
             on_step=False,
             on_epoch=True,
             logger=True,
             prog_bar=True,
-            sync_dist=False,
+            sync_dist=True,
         )
         
+        torch.save(
+            preds,
+            os.path.join(
+                self.cfg.default_root_dir,
+                f"val_epoch_{self.current_epoch}_end_step{self.global_step}_rank{self.global_rank}.pt",
+                )
+            )
+    
         self.score_metric.reset()
         self.validation_step_outputs.clear()
-
-        if self.trainer.is_global_zero:
-            torch.save(
-                preds,
-                os.path.join(
-                    self.cfg.default_root_dir,
-                    f"val_epoch_{self.current_epoch}_end_step{self.global_step}.pt",
-                ),
-            )
 
 
     def configure_gradient_clipping(

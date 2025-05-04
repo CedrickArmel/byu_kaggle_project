@@ -112,10 +112,8 @@ def get_data_loader(
     loader = DataLoader(
         dataset=dataset,
         batch_size=cfg.batch_size if mode == "train" else cfg.batch_size_val,
-        # num_workers=cfg.num_workers,
         collate_fn=collate_fn,
-        # pin_memory=cfg.pin_memory,
-        # prefetch_factor=cfg.prefetch_factor,
+        shuffle=cfg.shuffle if mode == "train" else False
     )
     return loader
 
