@@ -74,7 +74,7 @@ class LNet(L.LightningModule):
                 training_steps=training_steps,
                 end_lambda=self.cfg.end_lambda,
             )
-            if self.cfg.overfit_batches <= 0
+            if self.cfg.overfit_batches == 0
             else None
         )
 
@@ -162,26 +162,28 @@ class LNet(L.LightningModule):
         gradient_clip_algorithm: "Any | None" = None,
     ) -> "None":
         """Gradient clipping and tracking before/afater clipping"""
-        # TODO: if self.trainer.global_step % self.cfg.log_every_n_steps == 0:
-        grads = [p.grad for p in self.parameters() if p.grad is not None]
-        total_norm_before = torch.norm(
-            torch.stack(
-                [torch.norm(g.detach(), self.cfg.grad_norm_type) for g in grads]
-            ),
-            2,
-        )
+        if self.global_step % self.trainer.log_every_n_steps == 0:
+            grads = [p.grad for p in self.parameters() if p.grad is not None]
+            total_norm_before = torch.norm(
+                torch.stack(
+                    [torch.norm(g.detach(), self.cfg.grad_norm_type) for g in grads]
+                ),
+                2,
+            )
         self.clip_gradients(
             optimizer,
             gradient_clip_val=gradient_clip_val,
             gradient_clip_algorithm=gradient_clip_algorithm,
         )
-        grads = [p.grad for p in self.parameters() if p.grad is not None]
-        total_norm_after = torch.norm(
-            torch.stack(
-                [torch.norm(g.detach(), self.cfg.grad_norm_type) for g in grads]
-            ),
-            2,
-        )
+        if self.global_step % self.trainer.log_every_n_steps == 0:
+            grads = [p.grad for p in self.parameters() if p.grad is not None]
+            total_norm_after = torch.norm(
+                torch.stack(
+                    [torch.norm(g.detach(), self.cfg.grad_norm_type) for g in grads]
+                ),
+                2,
+            )
+
         if self.trainer.is_global_zero:
             self.log(
                 "grad_norm",
@@ -201,12 +203,3 @@ class LNet(L.LightningModule):
                 rank_zero_only=True,
                 prog_bar=False,
             )
-
-
-# TODO: compute metric on CPU: default false -> only for list states
-# TODO: sync on compute True, default True
-# TODO: dist_sync_on_step commencer avec False, puis True pour garder la meilleure option
-# TODO: metric states behave as buffers
-# TODO: dist_reduce_fx="cat"
-# TODO: reduce_fx: Reduction function over step values for end of epoch. Uses torch.mean() by default and is not applied when a torchmetrics.Metric is logged.
-# TODO: self.training_step_outputs.append(loss)

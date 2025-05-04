@@ -21,12 +21,18 @@
 # SOFTWARE.
 
 import lightning as L
-from lightning.pytorch.loggers import Logger
 from lightning.pytorch.callbacks import Callback
+from lightning.pytorch.loggers import Logger
+from lightning.pytorch.profilers import Profiler
 from omegaconf import DictConfig
 
 
-def get_lightning_trainer(cfg: "DictConfig", logger: "Logger | bool", callbacks: "list[Callback] | None"):
+def get_lightning_trainer(
+    cfg: "DictConfig",
+    logger: "Logger | bool",
+    callbacks: "list[Callback] | None",
+    profiler: "Profiler | None",
+):
     return L.Trainer(
         accelerator=cfg.accelerator,
         strategy=cfg.strategy,
@@ -60,7 +66,7 @@ def get_lightning_trainer(cfg: "DictConfig", logger: "Logger | bool", callbacks:
         benchmark=cfg.benchmark,
         inference_mode=cfg.inference_mode,
         use_distributed_sampler=cfg.use_distributed_sampler,
-        profiler=cfg.profiler,
+        profiler=profiler,
         detect_anomaly=cfg.detect_anomaly,
         barebones=cfg.barebones,
         plugins=cfg.plugins,

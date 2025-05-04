@@ -22,16 +22,21 @@
 
 # mypy: disable-error-code="misc, assignment"
 
-import datetime
 import os
 
 import hydra
 from lightning.pytorch.loggers import TensorBoardLogger
-from models import LNet
-from omegaconf import DictConfig
-from app.trainers import get_lightning_trainer
-from app.utils import get_callbacks, get_data, get_data_loader, set_seed
+from omegaconf import DictConfig, OmegaConf
+
+from app.config import excl, root_dir
 from app.models import LNet
+from app.trainers import get_lightning_trainer
+from app.utils import get_callbacks, get_data, get_data_loader, get_profiler, set_seed
+
+OmegaConf.register_new_resolver("excl", resolver=excl, replace=True)
+OmegaConf.register_new_resolver("root_dir", resolver=root_dir, replace=True)
+OmegaConf.register_new_resolver("eval", resolver=eval, replace=True)
+
 
 @hydra.main(config_path="./config", config_name="config")
 def main(cfg: "DictConfig") -> "None":
@@ -39,28 +44,19 @@ def main(cfg: "DictConfig") -> "None":
     train_df, val_df = get_data(cfg, mode="fit")
     train_loader = get_data_loader(cfg, train_df, mode="train")
     val_loader = get_data_loader(cfg, val_df, mode="validation")
-    chckpt_cb, lr_cb = get_callbacks(cfg)
 
-    start_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    cfg.default_root_dir = os.path.join(
-        cfg.output_dir,
-        cfg.backbone,
-        f"seed_{cfg.seed}",
-        f"fold{cfg.fold}",
-        f"{start_time}",
-    )
+    chckpt_cb, lr_cb = get_callbacks(cfg)
     os.makedirs(cfg.default_root_dir, exist_ok=True)
 
-    cfg.backbone_args = dict(
-        spatial_dims=cfg.spatial_dims,
-        in_channels=cfg.in_channels,
-        out_channels=cfg.n_classes,
-        backbone=cfg.backbone,
-        pretrained=cfg.pretrained,
+    profiler = get_profiler(cfg)
+    logger = (
+        TensorBoardLogger(save_dir=cfg.output_dir, name=cfg.backbone)
+        if cfg.logger
+        else cfg.logger
     )
-    logger = TensorBoardLogger(save_dir=cfg.output_dir, name=cfg.backbone) if cfg.logger else False
-    callbacks = [chckpt_cb, lr_cb] if not cfg.fast_dev_run else None
-    trainer = get_lightning_trainer(cfg, logger, callbacks)
+    callbacks = [chckpt_cb, lr_cb] if cfg.callbacks else cfg.callbacks
+    trainer = get_lightning_trainer(cfg, logger, callbacks, profiler)
+
     model = LNet(cfg)
     trainer.fit(
         model,

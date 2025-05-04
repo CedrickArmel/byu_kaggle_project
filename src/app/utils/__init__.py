@@ -27,6 +27,7 @@ from .utils import (
     get_data_loader,
     get_multistep_schedule_with_warmup,
     get_optimizer,
+    get_profiler,
     get_scheduler,
     set_seed,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "get_data_loader",
     "get_multistep_schedule_with_warmup",
     "get_optimizer",
+    "get_profiler",
     "get_scheduler",
     "set_seed",
 ]
