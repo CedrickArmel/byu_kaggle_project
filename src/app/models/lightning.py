@@ -62,7 +62,7 @@ class LNet(L.LightningModule):
     def forward(self, batch: "dict[str, Any]") -> "torch.Tensor":
         return self.model(batch)
 
-    def configure_optimizers(self) -> "dict[str, Any]":
+    def configure_optimizers(self) -> "dict[str, Any] | Optimizer":
         """Return the optimizer and an optionnal lr_scheduler"""
         training_steps: "int" = self.trainer.num_training_batches * self.cfg.max_epochs
         optimizer: "Optimizer | None" = get_optimizer(self.cfg, self.model)
@@ -78,11 +78,15 @@ class LNet(L.LightningModule):
             else None
         )
 
-        return dict(
-            optimizer=optimizer,
-            lr_scheduler=dict(
-                scheduler=scheduler, interval="step", frequency=1, name="lr"
-            ),
+        return (
+            dict(
+                optimizer=optimizer,
+                lr_scheduler=dict(
+                    scheduler=scheduler, interval="step", frequency=1, name="lr"
+                ),
+            )
+            if scheduler is not None
+            else optimizer
         )
 
     def training_step(
