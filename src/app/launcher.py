@@ -48,6 +48,8 @@ def main(cfg: "DictConfig") -> "None":
     chckpt_cb, lr_cb = get_callbacks(cfg)
     os.makedirs(cfg.default_root_dir, exist_ok=True)
 
+    model = LNet(cfg)
+
     profiler = get_profiler(cfg)
     logger = (
         TensorBoardLogger(save_dir=cfg.output_dir, name=cfg.backbone)
@@ -56,8 +58,6 @@ def main(cfg: "DictConfig") -> "None":
     )
     callbacks = [chckpt_cb, lr_cb] if cfg.callbacks else cfg.callbacks
     trainer = get_lightning_trainer(cfg, logger, callbacks, profiler)
-
-    model = LNet(cfg)
     trainer.fit(
         model,
         train_dataloaders=train_loader,
