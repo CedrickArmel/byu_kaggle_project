@@ -16,15 +16,16 @@ log_momentum: true
 log_weight_decay: true
 
 # Dataset/DataLoader
-batch_size: 4
+batch_size: 8
 batch_size_val: 1
 drop_last: false
 pin_memory: false
 val_pin_memory: false
 test_pin_memory: false
-num_workers: 10
-shuffle: false
-train_sub_epochs: 2
+num_workers: 8
+num_val_workers: 2
+shuffle: true
+train_sub_epochs: 8
 val_sub_epochs: 1
 prefetch_factor: 2
 
@@ -36,7 +37,12 @@ score_beta: 2
 
 # Model
 backbone: resnet10
-backbone_args: null
+backbone_args:
+  spatial_dims: "${spatial_dims}"
+  in_channels: "${in_channels}"
+  out_channels: "${n_classes}"
+  backbone: "${backbone}"
+  pretrained: "${pretrained}"
 class_weights: [256, 1]
 in_channels: 1
 mixup_p: 0.0
@@ -59,6 +65,11 @@ weight_decay: 0.0
 data_folder: "/kaggle/input/byu-locating-bacterial-flagellar-motors-2025"
 df_path: "/kaggle/input/drx75c-byu-ds01-folded-tomograms/byu_folded_tomograms_seed57.csv"
 output_dir: "/kaggle/working"
+
+# Profiler
+profiler_port: 9001
+emit_nvtx: true
+prof_filename: prof_filename.txt
 
 # Scheduler
 end_lambda: 1e-5
@@ -91,34 +102,37 @@ reload_dataloaders_every_n_epochs: 0
 benchmark: null
 barebones: false
 detect_anomaly: false
-fast_dev_run: true
+fast_dev_run: false
 num_sanity_val_steps: 0
-overfit_batches: 0.0
-profiler: null
+overfit_batches: 1
+profiler: "${excl:null,null,${is_barbones},false}"
 plugins: null
-default_root_dir: "/kaggle/working/"
+default_root_dir: '${root_dir:"${output_dir}","${backbone}","${seed}","${fold}"}'
 enable_checkpointing: true
 enable_model_summary: false
 enable_progress_bar: true
-logger: False
-log_every_n_steps: 1
+logger: "${excl:true,false,${is_barbones},false}"
+log_every_n_steps: 10
 model_registry: null
-callbacks: null
-check_val_every_n_epoch: 1
+callbacks: "${excl:true,null,${is_barbones},false}"
+check_val_every_n_epoch: null
 inference_mode: true
 limit_predict_batches: 1.0
 limit_test_batches: 1.0
 limit_train_batches: 1.0
 limit_val_batches: 1.0
-max_epochs: 1000
+max_epochs: 100
 min_epochs: null
 max_steps: -1
 max_time: null
 min_steps: null
-val_check_interval: 1.0
+val_check_interval: 100
 deterministic: "warn"
 # Fit
 ckpt_path: null
+
+# Resolver
+is_barbones: "${eval:${fast_dev_run} or ${barebones}}"
 
 # Training
 best_th: 0.5
@@ -144,4 +158,5 @@ topk: 20
 gamma: 2
 new_size: [288, 480, 480]
 roi_size: [96, 96, 96]
-sub_batch_size: 2
+sub_batch_size: 3
+ratios: [1, 2]

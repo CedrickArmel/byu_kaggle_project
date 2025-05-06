@@ -20,6 +20,22 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .resolvers import excl, root_dir
+import datetime
+import os
+from typing import Any
+from zoneinfo import ZoneInfo
 
-__all__ = ["excl", "root_dir"]
+
+def excl(uvalue: "Any", default: "Any", concurrent: "Any", base: "Any") -> "Any":
+    if concurrent == base:
+        resolved = uvalue
+    else:
+        resolved = default
+    return resolved
+
+
+def root_dir(root: "str", model: "str", seed: "str", fold: "str") -> "str":
+    start_time = datetime.datetime.now(ZoneInfo("Europe/Paris")).strftime(
+        "%Y%m%d-%H%M%S"
+    )
+    return os.path.join(root, model, f"seed_{seed}", f"fold{fold}", f"{start_time}")

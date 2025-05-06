@@ -31,6 +31,7 @@ import pandas as pd
 import torch
 import torch.optim as optim
 from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
+from lightning.pytorch.profilers import Profiler, PyTorchProfiler, XLAProfiler
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
@@ -107,15 +108,13 @@ def get_data_loader(
     Returns:
         DataLoader
     """
-    # TODO: exclude from cfg: train_df, test_df, val_df, train_transforms, eval_transforms, static_transforms, test_transforms
     dataset = BYUCustomDataset(cfg, df=df, mode=mode)
     loader = DataLoader(
         dataset=dataset,
         batch_size=cfg.batch_size if mode == "train" else cfg.batch_size_val,
-        # num_workers=cfg.num_workers,
         collate_fn=collate_fn,
-        # pin_memory=cfg.pin_memory,
-        # prefetch_factor=cfg.prefetch_factor,
+        num_workers=cfg.num_workers if mode == "train" else cfg.num_val_workers,
+        shuffle=cfg.shuffle if mode == "train" else False,
     )
     return loader
 
@@ -239,7 +238,7 @@ def get_multistep_schedule_with_warmup(
 
     def create_milestones(steps: "int", m: "int") -> "list[int]":
         """returns a list of milestones for the given number of steps and m."""
-        g = steps // m
+        g = int(steps // m)
         milestones = []
         for i in range(1, m + 1):
             milestones += [i] * g
@@ -357,6 +356,20 @@ def get_scheduler(
             optimizer, T_max=T_max, eta_min=1e-8
         )
     return scheduler
+
+
+def get_profiler(cfg: "DictConfig") -> "Profiler | None":
+    """Returns a suitable profiler for the used accelerator"""
+    if cfg.profiler:
+        if cfg.accelerator == "tpu":
+            profiler = XLAProfiler(port=cfg.profiler_port)
+        else:
+            profiler = PyTorchProfiler(
+                filename=cfg.prof_filename, emit_nvtx=cfg.emit_nvtx
+            )
+    else:
+        profiler = None
+    return profiler
 
 
 def set_seed(seed: "int" = 57) -> None:

@@ -149,26 +149,21 @@ def post_process_pipeline(
 
     preds: "torch.Tensor" = rec_img.softmax(1)
     preds = preds[:, 0, :][None,]
-    nms: "torch.Tensor" = simple_nms(preds, nms_radius=cfg.nms_radius)  # (B,1, D, H, W)
-    nms = nms.squeeze(dim=1)  # (B, D, H, W)
+
+    nms: "torch.Tensor" = simple_nms(preds, nms_radius=cfg.nms_radius)  # (1,B, D, H, W)
+    nms = nms.squeeze(dim=0)  # (B, D, H, W)
 
     flat_nms = nms.reshape(nms.shape[0], -1)  # (B, D*H*W)
     conf, indices = torch.topk(flat_nms, k=cfg.topk, dim=1)
     zyx = torch.stack(torch.unravel_index(indices, nms.shape[-3:]), dim=-1)  # (B, K, 3)
-    b = (
-        torch.arange(zyx.shape[0], device=device)
-        .unsqueeze(1)
-        .expand(zyx.shape[0], cfg.topk)
+
+    b = torch.arange(zyx.shape[0], device=device).unsqueeze(1)
+    ids = torch.unique(tomo_ids.reshape(zyx.shape[0], -1), dim=1).expand(
+        zyx.shape[0], cfg.topk
     )
 
-    b = b.reshape(-1, 1)
-    zyx = zyx.reshape(-1, 3)
-
     zyx = ((zyx * 2) / scales[b]).round().to(torch.int)
-    b = b.to(torch.long)
     conf = conf.to(torch.float32)
-
-    ids: "torch.Tensor" = tomo_ids[b]
 
     ids = ids.reshape(-1, 1)
     conf = conf.reshape(-1, 1)

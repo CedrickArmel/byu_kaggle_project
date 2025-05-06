@@ -50,7 +50,7 @@ def get_transforms(cfg: "DictConfig", transform: "str" = "static") -> "mt.Transf
                     spatial_size=list(cfg.roi_size),
                     num_samples=cfg.sub_batch_size,
                     num_classes=2,
-                    ratios=[1, 1],
+                    ratios=cfg.ratios,
                     warn=False,
                 ),
                 mt.RandFlipd(keys=["input", "target"], prob=0.5, spatial_axis=0),
