@@ -20,6 +20,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .resolvers import excl, root_dir
+from .resolvers import root_dir
 
-__all__ = ["excl", "root_dir"]
+__all__ = ["root_dir"]
