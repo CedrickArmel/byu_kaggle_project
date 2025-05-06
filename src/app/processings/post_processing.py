@@ -156,9 +156,11 @@ def post_process_pipeline(
     flat_nms = nms.reshape(nms.shape[0], -1)  # (B, D*H*W)
     conf, indices = torch.topk(flat_nms, k=cfg.topk, dim=1)
     zyx = torch.stack(torch.unravel_index(indices, nms.shape[-3:]), dim=-1)  # (B, K, 3)
-    
+
     b = torch.arange(zyx.shape[0], device=device).unsqueeze(1)
-    ids = torch.unique(tomo_ids.reshape(zyx.shape[0], -1), dim=1).expand(zyx.shape[0], cfg.topk)
+    ids = torch.unique(tomo_ids.reshape(zyx.shape[0], -1), dim=1).expand(
+        zyx.shape[0], cfg.topk
+    )
 
     zyx = ((zyx * 2) / scales[b]).round().to(torch.int)
     conf = conf.to(torch.float32)
