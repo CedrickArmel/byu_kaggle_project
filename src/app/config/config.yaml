@@ -138,7 +138,7 @@ overfit_tomos:
   - "tomo_e22370"
   - "tomo_2daaee"
   - "tomo_183270"
-seed: 57
+seed: 4294967295
 
 # Post-Processing
 nms_radius: 16
@@ -149,4 +149,4 @@ gamma: 2
 new_size: [288, 480, 480]
 roi_size: [96, 96, 96]
 sub_batch_size: 3
-ratios: [1, 2]
+ratios: [1, 1]
