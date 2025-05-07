@@ -52,21 +52,7 @@ def get_transforms(cfg: "DictConfig", transform: "str" = "static") -> "mt.Transf
                     num_classes=2,
                     ratios=cfg.ratios,
                     warn=False,
-                ),
-                mt.RandFlipd(keys=["input", "target"], prob=0.5, spatial_axis=0),
-                mt.RandFlipd(keys=["input", "target"], prob=0.5, spatial_axis=1),
-                mt.RandFlipd(keys=["input", "target"], prob=0.5, spatial_axis=2),
-                mt.RandRotate90d(
-                    keys=["input", "target"], prob=0.75, max_k=3, spatial_axes=(0, 1)
-                ),
-                mt.RandRotated(
-                    keys=["input", "target"],
-                    prob=0.5,
-                    range_x=0.78,
-                    range_y=0.0,
-                    range_z=0.0,
-                    padding_mode="reflection",
-                ),
+                )
             ]
         )
     elif transform.lower() == "validation":
