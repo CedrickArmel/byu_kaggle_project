@@ -6,8 +6,8 @@ save_top_k: 3
 mode: max
 auto_insert_metric_name: true
 save_weights_only: false
-every_n_train_steps: "${log_every_n_steps}"
-train_time_interval: "${eval: None if not ${every_n_train_steps} and not ${every_n_epochs} else None}"
+every_n_train_steps: 12
+train_time_interval: null
 every_n_epochs: "${eval: None if not ${every_n_train_steps} and not ${train_time_interval} else None}"
 save_on_train_epoch_end: false
 enable_version_counter: true
@@ -22,12 +22,12 @@ drop_last: false
 pin_memory: false
 val_pin_memory: false
 test_pin_memory: false
-num_workers: 9
-num_val_workers: 3
+num_workers: 0
+num_val_workers: 0
 shuffle: true
-train_sub_epochs: 8
+train_sub_epochs: 2
 val_sub_epochs: 1
-prefetch_factor: 2
+prefetch_factor: null
 
 # Metrics
 dt_multiplier: 1.0
@@ -97,17 +97,17 @@ barebones: false
 detect_anomaly: false
 fast_dev_run: false
 num_sanity_val_steps: 0
-overfit_batches: 1
-profiler: "${eval: None if not ${barebones} and not ${fast_dev_run} else True}"
+overfit_batches: 0
+profiler: "${eval: None if not ${barebones} and not ${fast_dev_run} else None}"
 plugins: null
 default_root_dir: '${root_dir:"${output_dir}","${backbone}","${seed}","${fold}"}'
 enable_checkpointing: true
 enable_model_summary: false
 enable_progress_bar: true
 logger: "${eval: not ${barebones} and not ${fast_dev_run}}"
-log_every_n_steps: 10
+log_every_n_steps: 4
 model_registry: null
-callbacks: "${eval: None if not ${barebones} and not ${fast_dev_run} else True}"
+callbacks: "${eval: True if not ${barebones} and not ${fast_dev_run} else None}"
 check_val_every_n_epoch: null
 inference_mode: true
 limit_predict_batches: 1.0

@@ -152,6 +152,7 @@ def get_data_loader(
         worker_init_fn=seed_worker,
         num_workers=cfg.num_workers if mode == "train" else cfg.num_val_workers,
         shuffle=cfg.shuffle if mode == "train" else False,
+        drop_last=True,
         generator=g,
     )
     return loader
