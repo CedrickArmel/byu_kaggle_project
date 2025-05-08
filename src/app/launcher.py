@@ -22,18 +22,19 @@
 
 # mypy: disable-error-code="misc, assignment"
 
+import datetime
 import os
+from zoneinfo import ZoneInfo
 
 import hydra
 from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import DictConfig, OmegaConf
 
-from app.config import excl, root_dir
+from app.config import root_dir
 from app.models import LNet
 from app.trainers import get_lightning_trainer
 from app.utils import get_callbacks, get_data, get_data_loader, get_profiler, set_seed
 
-OmegaConf.register_new_resolver("excl", resolver=excl, replace=True)
 OmegaConf.register_new_resolver("root_dir", resolver=root_dir, replace=True)
 OmegaConf.register_new_resolver("eval", resolver=eval, replace=True)
 
@@ -45,8 +46,19 @@ def main(cfg: "DictConfig") -> "None":
     train_loader = get_data_loader(cfg, train_df, mode="train")
     val_loader = get_data_loader(cfg, val_df, mode="validation")
 
-    chckpt_cb, lr_cb = get_callbacks(cfg)
+    start_time = datetime.datetime.now(ZoneInfo("Europe/Paris")).strftime(
+        "%Y%m%d%H%M%S"
+    )
+    cfg.default_root_dir = os.path.join(
+        cfg.output_dir,
+        cfg.backbone,
+        f"seed_{cfg.seed}",
+        f"fold{cfg.fold}",
+        f"{start_time}",
+    )
+
     os.makedirs(cfg.default_root_dir, exist_ok=True)
+    chckpt_cb, lr_cb = get_callbacks(cfg)
 
     model = LNet(cfg)
 

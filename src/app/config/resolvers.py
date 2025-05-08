@@ -22,16 +22,7 @@
 
 import datetime
 import os
-from typing import Any
 from zoneinfo import ZoneInfo
-
-
-def excl(uvalue: "Any", default: "Any", concurrent: "Any", base: "Any") -> "Any":
-    if concurrent == base:
-        resolved = uvalue
-    else:
-        resolved = default
-    return resolved
 
 
 def root_dir(root: "str", model: "str", seed: "str", fold: "str") -> "str":

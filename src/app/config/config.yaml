@@ -1,14 +1,14 @@
 # Callbacks
-filename: "{epoch}-{step}-{val_loss:.2f}-{other_metric:.2f}"
-monitor: byu_score
+filename: "{epoch}-{step}-{val_loss:.2f}-{score:.2f}-{fbeta1:.2f}"
+monitor: score
 save_last: true
 save_top_k: 3
 mode: max
 auto_insert_metric_name: true
 save_weights_only: false
-every_n_train_steps: 24
+every_n_train_steps: 12
 train_time_interval: null
-every_n_epochs: null
+every_n_epochs: "${eval: None if not ${every_n_train_steps} and not ${train_time_interval} else None}"
 save_on_train_epoch_end: false
 enable_version_counter: true
 logging_interval: step
@@ -22,18 +22,18 @@ drop_last: false
 pin_memory: false
 val_pin_memory: false
 test_pin_memory: false
-num_workers: 8
+num_workers: 4
 num_val_workers: 2
 shuffle: true
-train_sub_epochs: 8
+train_sub_epochs: 1
 val_sub_epochs: 1
 prefetch_factor: 2
 
 # Metrics
-dt_multiplier: 1
+dt_multiplier: 1.0
 max_th: 0.5
 motor_radius: 500
-score_beta: 2
+score_beta: 2.0
 
 # Model
 backbone: resnet10
@@ -51,7 +51,7 @@ n_classes: 1
 pretrained: true
 spatial_dims: 3
 virt_sub_batch_size: -1
-virt_eval_sub_batch_size: -1
+virt_eval_sub_batch_size: 8
 lvl_weights: [0, 0, 0, 1]
 
 # Optimizer
@@ -77,13 +77,6 @@ milestones: 10
 schedule: multistep
 warmup: 100
 
-# Tracking
-track_grad_norm: true
-track_weight_norm: true
-write_xla_metrics: true
-async_closure: false
-log_grad_step: 24
-
 # Clipping
 grad_norm_type: 2
 
@@ -104,17 +97,17 @@ barebones: false
 detect_anomaly: false
 fast_dev_run: false
 num_sanity_val_steps: 0
-overfit_batches: 1
-profiler: "${excl:null,null,${is_barbones},false}"
+overfit_batches: 0
+profiler: "${eval: None if not ${barebones} and not ${fast_dev_run} else None}"
 plugins: null
-default_root_dir: '${root_dir:"${output_dir}","${backbone}","${seed}","${fold}"}'
+default_root_dir: "${output_dir}"
 enable_checkpointing: true
 enable_model_summary: false
 enable_progress_bar: true
-logger: "${excl:true,false,${is_barbones},false}"
-log_every_n_steps: 10
+logger: "${eval: not ${barebones} and not ${fast_dev_run}}"
+log_every_n_steps: 4
 model_registry: null
-callbacks: "${excl:true,null,${is_barbones},false}"
+callbacks: "${eval: True if not ${barebones} and not ${fast_dev_run} else None}"
 check_val_every_n_epoch: null
 inference_mode: true
 limit_predict_batches: 1.0
@@ -126,13 +119,10 @@ min_epochs: null
 max_steps: -1
 max_time: null
 min_steps: null
-val_check_interval: 100
+val_check_interval: 12
 deterministic: "warn"
 # Fit
 ckpt_path: null
-
-# Resolver
-is_barbones: "${eval:${fast_dev_run} or ${barebones}}"
 
 # Training
 best_th: 0.5
@@ -148,15 +138,15 @@ overfit_tomos:
   - "tomo_e22370"
   - "tomo_2daaee"
   - "tomo_183270"
-seed: 57
+seed: 4294967295
 
 # Post-Processing
 nms_radius: 16
-topk: 20
+topk: 10
 
 # Transforms
 gamma: 2
 new_size: [288, 480, 480]
 roi_size: [96, 96, 96]
 sub_batch_size: 3
-ratios: [1, 2]
+ratios: [1, 1]

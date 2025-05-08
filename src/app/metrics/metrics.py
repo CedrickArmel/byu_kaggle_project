@@ -27,121 +27,100 @@ https://www.kaggle.com/code/metric/czi-cryoet-84969?scriptVersionId=208227222&ce
 
 import numpy as np
 import torch
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 from omegaconf import DictConfig
 from scipy.spatial import KDTree
 from torchmetrics import Metric
 from torchmetrics.utilities import dim_zero_cat
 
 
-class ParticipantVisibleError(Exception):
-    pass
-
-
 class BYUFbeta(Metric):
-    def __init__(self, cfg: "DictConfig", tn_as_tp: "bool" = False, **kwargs) -> "None":
+    def __init__(self, cfg: "DictConfig", **kwargs) -> "None":
         super().__init__(**kwargs)
         self.add_state(name="preds", default=[], dist_reduce_fx="cat")
         self.add_state(name="targets", default=[], dist_reduce_fx="cat")
         self.cfg = cfg
-        self.tn_as_tp = tn_as_tp
 
     def update(self, pred: "torch.Tensor", target: "torch.Tensor") -> "None":
         self.preds.append(pred)  # type: ignore[operator, union-attr]
         self.targets.append(target)  # type: ignore[operator, union-attr]
 
     def compute(self) -> "dict[str, float]":
-        preds = dim_zero_cat(self.preds)  # type: ignore[arg-type]
-        targets = dim_zero_cat(self.targets)  # type: ignore[arg-type]
-        scores = []
-        ths = np.arange(0, self.cfg.max_th, 0.005)
+        preds: "torch.Tensor" = dim_zero_cat(x=self.preds)  # type: ignore[arg-type]
+        targets: "torch.Tensor" = dim_zero_cat(x=self.targets)  # type: ignore[arg-type]
+        targets = torch.unique(targets, dim=0)
+        preds = get_topk_by_id(preds=preds, targets=targets)
+
+        scores: "list" = []
+        fbeta1s: "list" = []
+        fbeta2s: "list" = []
+        ths: "NDArray" = np.arange(start=0, stop=self.cfg.max_th, step=0.005)
+
         for t in ths:
-            scores += [self._score(t, preds, targets)]
-        best_idx = int(np.argmax(scores))
+            score, fbeta1, fbeta2 = self.score_fn(t=t, preds=preds, targets=targets)
+            scores += [score]
+            fbeta1s += [fbeta1]
+            fbeta2s += [fbeta2]
+
+        best_idx = int(np.argmax(a=scores))
         best_th = float(ths[best_idx])
         best_score = float(scores[best_idx])
-        return dict(byu_score=best_score, best_ths=best_th)
+        best_fbeta1 = float(fbeta1s[best_idx])
+        best_fbeta2 = float(fbeta2s[best_idx])
+        return dict(
+            score=best_score, fbeta1=best_fbeta1, fbeta2=best_fbeta2, best_ths=best_th
+        )
 
-    def _score(
+    def score_fn(
         self, t: "float", preds: "torch.Tensor", targets: "torch.Tensor"
-    ) -> "float":
-        beta = self.cfg.score_beta
-        ut_preds, ot_preds, ntargets, ptargets = self._thresholder(t, preds, targets)
-        candidates, fp_ = self._compute_candidates(ot_preds, ptargets)
-        tn, fn_ = self._filter_negatives(ut_preds, ntargets)
-        tp, fp, fn = self._compute_candidates_cm_metrics(candidates, ptargets)
-        if self.tn_as_tp:
-            tp += tn
-        fp += fp_
-        fn += fn_
-        prec = tp / (tp + fp) if tp + fp > 0 else 0
-        rec = tp / (tp + fn) if tp + fn > 0 else 0
-        fbeta: "float" = (
-            ((1 + beta**2) * (prec * rec) / (beta**2 * prec + rec))
-            if (prec + rec) > 0
+    ) -> "tuple[float,...]":
+        """Computes the scores"""
+        beta: "float" = self.cfg.score_beta
+        ut_preds, candidates, ntargets, ptargets = thresholder(t, preds, targets)
+        tp2, fp2, fn2 = filter_negatives(ut_preds, ntargets)
+        tp1, fp1, fn1 = self.compute_candidates_cm_metrics(candidates, ptargets)
+
+        prec1: "float" = tp1 / (tp1 + fp1) if tp1 + fp1 > 0 else 0.0
+        rec1: "float" = tp1 / (tp1 + fn1) if tp1 + fn1 > 0 else 0.0
+
+        prec2: "float" = tp2 / (tp2 + fp2) if tp2 + fp2 > 0 else 0.0
+        rec2: "float" = tp2 / (tp2 + fn2) if tp2 + fn2 > 0 else 0.0
+
+        fbeta1: "float" = (
+            ((1 + beta**2) * (prec1 * rec1) / (beta**2 * prec1 + rec1))
+            if (prec1 + rec1) > 0
             else 0.0
         )
-        return fbeta
 
-    def _thresholder(
-        self, t: "float", preds: "torch.Tensor", targets: "torch.Tensor"
-    ) -> "tuple[torch.Tensor, ...]":
-        ut_preds = torch.unique(preds[torch.where(preds[:, -1] < t)][:, :-1], dim=0)
-        ot_preds = torch.unique(preds[torch.where(preds[:, -1] >= t)][:, :-1], dim=0)
+        fbeta2: "float" = (
+            ((1 + beta**2) * (prec2 * rec2) / (beta**2 * prec2 + rec2))
+            if (prec2 + rec2) > 0
+            else 0.0
+        )
 
-        select_ut = torch.isin(ut_preds[:, -1], ot_preds[:, -1])
-        ut_preds = ut_preds[~select_ut]
+        score: "float" = (3 * fbeta1 + fbeta2) / 4
+        return score, fbeta1, fbeta2
 
-        targets = torch.unique(targets, dim=0)
-        ntargets = torch.unique(targets[torch.where(targets[:, 0] == -1)], dim=0)
-        ptargets = torch.unique(targets[torch.where(targets[:, 0] >= 0)], dim=0)
-        return ut_preds, ot_preds, ntargets, ptargets
-
-    def _compute_candidates(
-        self, ot_preds: "torch.Tensor", ptargets: "torch.Tensor"
-    ) -> "tuple[torch.Tensor, int]":
-        select_candidates = torch.isin(ot_preds[:, -1], ptargets[:, -2])
-        candidates = ot_preds[select_candidates]
-        fp = len(ot_preds[~select_candidates])
-        return candidates, fp
-
-    def _filter_negatives(
-        self, ut_preds: "torch.Tensor", ntargets: "torch.Tensor"
-    ) -> "tuple[int, int]":
-        select_negatives = torch.isin(ut_preds[:, -1], ntargets[:, -2])
-        tn = len(ut_preds[select_negatives])
-        fn = len(ut_preds[~select_negatives])
-        return tn, fn
-
-    def _compute_candidates_cm_metrics(
+    def compute_candidates_cm_metrics(
         self, candidates: "torch.Tensor", ptargets: "torch.Tensor"
     ) -> "tuple[int, ...]":
         motor_radius: "float" = self.cfg.motor_radius * self.cfg.dt_multiplier
-        tp = 0
-        fp = 0
-        fn = 0
-        tomo_ids = ptargets[:, -2].unique()
+        tp1, fp1, fn1 = 0, 0, 0
+
+        tomo_ids: "list[float]" = ptargets[:, -2].unique().tolist()
 
         for tid in tomo_ids:
             # Sélectionne les points du tomogram courant
             ref_select: "torch.Tensor" = ptargets[:, -2] == tid
-            candidate_select = candidates[:, -1] == tid
+            candidate_select: "torch.Tensor" = candidates[:, -1] == tid
 
-            reference_points = ptargets[ref_select, :-2]
-            candidate_points = candidates[candidate_select, :-1]
-            vxs = ptargets[ref_select, -2][0]
+            reference_points: "torch.Tensor" = ptargets[ref_select, :-2]
+            candidate_points: "torch.Tensor" = candidates[candidate_select, :-1]
+            vxs: "torch.Tensor" = ptargets[ref_select, -2][0]  # scalar tensor
             reference_radius = int((motor_radius / vxs) * 2)
 
-            if len(reference_points) == 0:
-                tp += 0
-                fp += len(candidate_points)
-                fn += 0
-                continue
-
             if len(candidate_points) == 0:
-                tp += 0
-                fp += 0
-                fn += len(reference_points)
+                fn1 += len(reference_points)
                 continue
 
             reference_points_np: "NDArray" = reference_points.cpu().numpy()
@@ -149,14 +128,67 @@ class BYUFbeta(Metric):
 
             ref_tree = KDTree(reference_points_np)
             cand_tree = KDTree(candidate_points_np)
-            raw_matches = cand_tree.query_ball_tree(ref_tree, r=reference_radius)
+            raw_matches: "ArrayLike" = cand_tree.query_ball_tree(
+                ref_tree, r=reference_radius
+            )
 
             matched_references = []
             for match in raw_matches:
                 matched_references.extend(match)
 
             matched_references = list(set(matched_references))
-            tp += len(matched_references)
-            fp += len(candidate_points) - len(matched_references)
-            fn += len(reference_points) - len(matched_references)
-        return tp, fp, fn
+            tp1 += len(matched_references)
+            fp1 += len(candidate_points) - len(matched_references)
+            fn1 += len(reference_points) - len(matched_references)
+        return tp1, fp1, fn1
+
+
+def filter_negatives(
+    ut_preds: "torch.Tensor", ntargets: "torch.Tensor"
+) -> "tuple[int, ...]":
+    tp2, fp2, fn2 = 0, 0, 0
+    reference_ids: "list[float]" = ntargets[:, -2].unique().tolist()
+    candidates_ids: "list[float]" = ut_preds[:, -1].unique().tolist()
+    tp2 += len(set(reference_ids) & set(candidates_ids))
+    fn2 += len(reference_ids) - tp2  # over threshold from empty
+    missing_ids: "set[float]" = set(candidates_ids) - set(reference_ids)
+    for i in missing_ids:
+        fp2 += ut_preds[ut_preds[:, -1] == i].size(0)
+    return tp2, fp2, fn2
+
+
+def get_topk_by_id(preds: "torch.Tensor", targets: "torch.Tensor") -> "torch.Tensor":
+    """Returns the k most confident points by tomo_id."""
+    topk_results: "list[torch.Tensor]" = []
+    ids = targets[:, -2].unique()
+    for i in ids:
+        k = targets[targets[:, -2] == i].size(dim=0)
+        subset: "torch.Tensor" = preds[preds[:, -2] == i]
+        if subset.size(dim=0) <= k:
+            topk: "torch.Tensor" = subset
+        else:
+            _, select = torch.topk(input=subset[:, -2], k=k)
+            topk = subset[select]
+        topk_results.append(topk)
+    return torch.cat(topk_results, dim=0)
+
+
+def thresholder(
+    t: "float", preds: "torch.Tensor", targets: "torch.Tensor"
+) -> "tuple[torch.Tensor, ...]":
+    ut_preds: "torch.Tensor" = torch.unique(
+        preds[torch.where(preds[:, -1] < t)][:, :-1], dim=0
+    )
+    ot_preds: "torch.Tensor" = torch.unique(
+        preds[torch.where(preds[:, -1] >= t)][:, :-1], dim=0
+    )
+    ntargets: "torch.Tensor" = torch.unique(
+        targets[torch.where(targets[:, 0] == -1)], dim=0
+    )
+    ptargets: "torch.Tensor" = torch.unique(
+        targets[torch.where(targets[:, 0] >= 0)], dim=0
+    )
+
+    select_candidates: "torch.Tensor" = torch.isin(ot_preds[:, -1], ptargets[:, -2])
+    candidates: "torch.Tensor" = ot_preds[select_candidates]
+    return ut_preds, candidates, ntargets, ptargets
