@@ -386,7 +386,7 @@ def get_scheduler(
 
 
 def seed_worker(worker_id):
-    worker_seed = torch.initial_seed() % 2**32
+    worker_seed = np.iinfo(np.uint32).max
     np.random.seed(worker_seed)
     random.seed(worker_seed)
 

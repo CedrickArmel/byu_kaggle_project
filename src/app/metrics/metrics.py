@@ -27,7 +27,7 @@ https://www.kaggle.com/code/metric/czi-cryoet-84969?scriptVersionId=208227222&ce
 
 import numpy as np
 import torch
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 from omegaconf import DictConfig
 from scipy.spatial import KDTree
 from torchmetrics import Metric
@@ -46,15 +46,15 @@ class BYUFbeta(Metric):
         self.targets.append(target)  # type: ignore[operator, union-attr]
 
     def compute(self) -> "dict[str, float]":
-        preds = dim_zero_cat(x=self.preds)  # type: ignore[arg-type]
-        targets = dim_zero_cat(x=self.targets)  # type: ignore[arg-type]
+        preds: "torch.Tensor" = dim_zero_cat(x=self.preds)  # type: ignore[arg-type]
+        targets: "torch.Tensor" = dim_zero_cat(x=self.targets)  # type: ignore[arg-type]
         targets = torch.unique(targets, dim=0)
         preds = get_topk_by_id(preds=preds, targets=targets)
 
         scores: "list" = []
         fbeta1s: "list" = []
         fbeta2s: "list" = []
-        ths = np.arange(start=0, stop=self.cfg.max_th, step=0.005)
+        ths: "NDArray" = np.arange(start=0, stop=self.cfg.max_th, step=0.005)
 
         for t in ths:
             score, fbeta1, fbeta2 = self.score_fn(t=t, preds=preds, targets=targets)
@@ -62,7 +62,7 @@ class BYUFbeta(Metric):
             fbeta1s += [fbeta1]
             fbeta2s += [fbeta2]
 
-        best_idx = int(np.argmax(a=fbeta1s))
+        best_idx = int(np.argmax(a=scores))
         best_th = float(ths[best_idx])
         best_score = float(scores[best_idx])
         best_fbeta1 = float(fbeta1s[best_idx])
@@ -80,11 +80,11 @@ class BYUFbeta(Metric):
         tp2, fp2, fn2 = filter_negatives(ut_preds, ntargets)
         tp1, fp1, fn1 = self.compute_candidates_cm_metrics(candidates, ptargets)
 
-        prec1 = tp1 / (tp1 + fp1) if tp1 + fp1 > 0 else 0
-        rec1 = tp1 / (tp1 + fn1) if tp1 + fn1 > 0 else 0
+        prec1: "float" = tp1 / (tp1 + fp1) if tp1 + fp1 > 0 else 0.0
+        rec1: "float" = tp1 / (tp1 + fn1) if tp1 + fn1 > 0 else 0.0
 
-        prec2 = tp2 / (tp2 + fp2) if tp2 + fp2 > 0 else 0
-        rec2 = tp2 / (tp2 + fn2) if tp2 + fn2 > 0 else 0
+        prec2: "float" = tp2 / (tp2 + fp2) if tp2 + fp2 > 0 else 0.0
+        rec2: "float" = tp2 / (tp2 + fn2) if tp2 + fn2 > 0 else 0.0
 
         fbeta1: "float" = (
             ((1 + beta**2) * (prec1 * rec1) / (beta**2 * prec1 + rec1))
@@ -107,16 +107,16 @@ class BYUFbeta(Metric):
         motor_radius: "float" = self.cfg.motor_radius * self.cfg.dt_multiplier
         tp1, fp1, fn1 = 0, 0, 0
 
-        tomo_ids = ptargets[:, -2].unique()
+        tomo_ids: "list[float]" = ptargets[:, -2].unique().tolist()
 
         for tid in tomo_ids:
             # Sélectionne les points du tomogram courant
             ref_select: "torch.Tensor" = ptargets[:, -2] == tid
             candidate_select: "torch.Tensor" = candidates[:, -1] == tid
 
-            reference_points = ptargets[ref_select, :-2]
-            candidate_points = candidates[candidate_select, :-1]
-            vxs = ptargets[ref_select, -2][0]
+            reference_points: "torch.Tensor" = ptargets[ref_select, :-2]
+            candidate_points: "torch.Tensor" = candidates[candidate_select, :-1]
+            vxs: "torch.Tensor" = ptargets[ref_select, -2][0]  # scalar tensor
             reference_radius = int((motor_radius / vxs) * 2)
 
             if len(candidate_points) == 0:
@@ -128,7 +128,9 @@ class BYUFbeta(Metric):
 
             ref_tree = KDTree(reference_points_np)
             cand_tree = KDTree(candidate_points_np)
-            raw_matches = cand_tree.query_ball_tree(ref_tree, r=reference_radius)
+            raw_matches: "ArrayLike" = cand_tree.query_ball_tree(
+                ref_tree, r=reference_radius
+            )
 
             matched_references = []
             for match in raw_matches:
@@ -145,15 +147,13 @@ def filter_negatives(
     ut_preds: "torch.Tensor", ntargets: "torch.Tensor"
 ) -> "tuple[int, ...]":
     tp2, fp2, fn2 = 0, 0, 0
-    reference_ids = ntargets[:, -2].unique()
-    for i in range(ut_preds.size(dim=0)):
-        if i in reference_ids:
-            tp2 += 1  # under threshold from empty tomo
-        else:
-            fp2 += ut_preds[ut_preds[:, -1] == i].size(
-                0
-            )  # under threshold from non-empty (potential TP)
+    reference_ids: "list[float]" = ntargets[:, -2].unique().tolist()
+    candidates_ids: "list[float]" = ut_preds[:, -1].unique().tolist()
+    tp2 += len(set(reference_ids) & set(candidates_ids))
     fn2 += len(reference_ids) - tp2  # over threshold from empty
+    missing_ids: "set[float]" = set(candidates_ids) - set(reference_ids)
+    for i in missing_ids:
+        fp2 += ut_preds[ut_preds[:, -1] == i].size(0)
     return tp2, fp2, fn2
 
 

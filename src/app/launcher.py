@@ -22,7 +22,9 @@
 
 # mypy: disable-error-code="misc, assignment"
 
+import datetime
 import os
+from zoneinfo import ZoneInfo
 
 import hydra
 from lightning.pytorch.loggers import TensorBoardLogger
@@ -44,8 +46,19 @@ def main(cfg: "DictConfig") -> "None":
     train_loader = get_data_loader(cfg, train_df, mode="train")
     val_loader = get_data_loader(cfg, val_df, mode="validation")
 
-    chckpt_cb, lr_cb = get_callbacks(cfg)
+    start_time = datetime.datetime.now(ZoneInfo("Europe/Paris")).strftime(
+        "%Y%m%d%H%M%S"
+    )
+    cfg.default_root_dir = os.path.join(
+        cfg.output_dir,
+        cfg.backbone,
+        f"seed_{cfg.seed}",
+        f"fold{cfg.fold}",
+        f"{start_time}",
+    )
+
     os.makedirs(cfg.default_root_dir, exist_ok=True)
+    chckpt_cb, lr_cb = get_callbacks(cfg)
 
     model = LNet(cfg)
 
