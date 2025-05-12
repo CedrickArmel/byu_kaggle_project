@@ -6828,6 +6828,28 @@ opt-einsum = ["opt-einsum (>=3.3)"]
 optree = ["optree (>=0.13.0)"]
 
 [[package]]
+name = "torch-tb-profiler"
+version = "0.4.3"
+description = "PyTorch Profiler TensorBoard Plugin"
+optional = false
+python-versions = ">=3.6.2"
+groups = ["main"]
+files = [
+    {file = "torch_tb_profiler-0.4.3-py3-none-any.whl", hash = "sha256:207a49b05572dd983e4ab29eb5e0fcadd60374a8f93c78ec638217e8d18788dc"},
+    {file = "torch_tb_profiler-0.4.3.tar.gz", hash = "sha256:8b8d29b2de960b3c4423087b23cec29beaf9ac3a8c7b046c18fd25b218f726b1"},
+]
+
+[package.dependencies]
+pandas = ">=1.0.0"
+tensorboard = ">=1.15,<2.1.0 || >2.1.0"
+
+[package.extras]
+blob = ["azure-storage-blob"]
+gs = ["google-cloud-storage"]
+hdfs = ["fsspec", "pyarrow"]
+s3 = ["boto3"]
+
+[[package]]
 name = "torch-xla"
 version = "2.6.1"
 description = "XLA bridge for PyTorch"
@@ -7623,4 +7645,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10"
-content-hash = "e6702ec2718353165236ddea04b7bff1c0f97193f8a86a9042482922701af1b8"
+content-hash = "f82be787c31ad5f79852d61b2512012eff674e7e74f1992f22e59bf4daf6e184"

@@ -12,6 +12,8 @@ dependencies = [
     "monai[all] (>=1.4.0,<2.0.0)",
     "torch (>=2.6.0,<2.7.0)",
     "lightning (>=2.5.1.post0,<3.0.0)",
+    "tensorboard (>=2.19.0,<3.0.0)",
+    "torch-tb-profiler (>=0.4.3,<0.5.0)",
 ]
 packages = [{ include = "app", from = "src" }]
 

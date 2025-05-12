@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# TODO: replace the scripts by an unique makefile
 set -e  # Exit immediately on error
 
 # 🐍 Install pyenv

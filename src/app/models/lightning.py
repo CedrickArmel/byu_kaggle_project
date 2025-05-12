@@ -45,25 +45,43 @@ class LNet(L.LightningModule):
         super().__init__()
         self.cfg = cfg
         self.model = Net(cfg)
-        self.score_metric = BYUFbeta(
-            self.cfg,
-            compute_on_cpu=True,
-            dist_sync_on_step=True,
-        )
         self.validation_step_outputs: "list[torch.Tensor]" = []
+    
+    def on_fit_start(self) -> "None":
+        """Called at the very beginning of fit."""
+        if torch.distributed.is_initialized():
+            if not hasattr(self, "gloo_group"):
+                self.gloo_groupg = torch.distributed.new_group(backend="gloo")
+                self.score_metric = BYUFbeta(
+                    self.cfg,
+                    process_group=self.gloo_groupg,
+                    compute_on_cpu=self.cfg.byu_metric.compute_on_cpu,
+                    dist_sync_on_step=self.cfg.byu_metric.dist_sync_on_step,
+                    sync_on_compute=self.cfg.byu_metric.sync_on_compute,
+            )
+        else:
+            self.score_metric = BYUFbeta(
+                self.cfg,
+                compute_on_cpu=self.cfg.byu_metric.compute_on_cpu,
+                dist_sync_on_step=self.cfg.byu_metric.dist_sync_on_step,
+                sync_on_compute=self.cfg.byu_metric.sync_on_compute,
+            )
+        
 
     def setup(self, stage: "str") -> "None":
         """Called at the beginning of each stage in oder to build model dynamically."""
         if stage == "fit" and self.cfg.pretrained:
             for param in self.model.backbone.encoder.parameters():
                 param.requires_grad = False
-        self.cfg.lr *= self.trainer.world_size
+        self.cfg.batch_size *= (self.trainer.world_size * self.cfg.sub_batch_size)
+        self.cfg.val_batch_size *= self.trainer.world_size
 
     def forward(self, batch: "dict[str, Any]") -> "torch.Tensor":
         return self.model(batch)
 
     def configure_optimizers(self) -> "dict[str, Any] | Optimizer":
         """Return the optimizer and an optionnal lr_scheduler"""
+        self.cfg.lr *= self.trainer.world_size
         training_steps: "int" = self.trainer.num_training_batches * self.cfg.max_epochs
         optimizer: "Optimizer | None" = get_optimizer(self.cfg, self.model)
         scheduler: LRScheduler = (
@@ -104,6 +122,7 @@ class LNet(L.LightningModule):
                 prog_bar=True,
                 sync_dist=False,
                 rank_zero_only=True,
+                batch_size=self.cfg.batch_size,
             )
         return loss
 
@@ -125,6 +144,7 @@ class LNet(L.LightningModule):
             logger=True,
             prog_bar=True,
             sync_dist=True,
+            batch_size=self.cfg.val_batch_size
         )
         return preds
 

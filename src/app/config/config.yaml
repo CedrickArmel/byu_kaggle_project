@@ -1,42 +1,46 @@
 # Callbacks
-filename: "{epoch}-{step}-{val_loss:.2f}-{score:.2f}-{fbeta1:.2f}"
-monitor: score
+filename: "{epoch}-{step}-{val_loss:.2f}-{fbeta1:.2f}-{fbeta2:.2f}"
+monitor: fbeta1
 save_last: true
 save_top_k: 3
 mode: max
 auto_insert_metric_name: true
 save_weights_only: false
-every_n_train_steps: 12
+every_n_train_steps: 96
 train_time_interval: null
 every_n_epochs: "${eval: None if not ${every_n_train_steps} and not ${train_time_interval} else None}"
 save_on_train_epoch_end: false
-enable_version_counter: true
+enable_version_counter: false
 logging_interval: step
 log_momentum: true
 log_weight_decay: true
 
 # Dataset/DataLoader
 batch_size: 8
-batch_size_val: 1
-drop_last: false
+val_batch_size: 1
+drop_last: true
+val_drop_last: false
 pin_memory: false
 val_pin_memory: false
 test_pin_memory: false
-num_workers: 4
-num_val_workers: 2
+num_workers: 2  # TODO: 4 workers and increase prefetch_factor
+val_num_workers: 2
 shuffle: true
 train_sub_epochs: 1
 val_sub_epochs: 1
-prefetch_factor: 2
+prefetch_factor: 40
+val_prefetch_factor: 16
+persistent_workers: true
+val_persistent_workers: false
 
 # Metrics
 dt_multiplier: 1.0
-max_th: 0.5
+max_th: 1.0
 motor_radius: 500
 score_beta: 2.0
 
 # Model
-backbone: resnet10
+backbone: resnet50
 backbone_args:
   spatial_dims: "${spatial_dims}"
   in_channels: "${in_channels}"
@@ -54,8 +58,19 @@ virt_sub_batch_size: -1
 virt_eval_sub_batch_size: 8
 lvl_weights: [0, 0, 0, 1]
 
+# Metrics
+byu_metric:
+  compute_on_cpu: true
+  dist_sync_on_step: false
+  process_group: null
+  dist_sync_fn: null
+  distributed_available_fn: null
+  sync_on_compute: true
+  compute_with_cache: true
+  dist_reduce_fx: "cat"
+
 # Optimizer
-lr: 1e-5
+lr: 1e-8
 optimizer: SGD
 sgd_momentum: 0.8
 sgd_nesterov: true
@@ -83,7 +98,7 @@ grad_norm_type: 2
 # Trainer
 accumulate_grad_batches: 1
 gradient_clip_algorithm: norm
-gradient_clip_val: 2
+gradient_clip_val: 1
 precision: "bf16-true"
 sync_batchnorm: true
 accelerator: "tpu"
@@ -114,12 +129,12 @@ limit_predict_batches: 1.0
 limit_test_batches: 1.0
 limit_train_batches: 1.0
 limit_val_batches: 1.0
-max_epochs: 100
+max_epochs: 1000
 min_epochs: null
 max_steps: -1
 max_time: null
 min_steps: null
-val_check_interval: 12
+val_check_interval: 96
 deterministic: "warn"
 # Fit
 ckpt_path: null
@@ -148,5 +163,5 @@ topk: 10
 gamma: 2
 new_size: [288, 480, 480]
 roi_size: [96, 96, 96]
-sub_batch_size: 3
+sub_batch_size: 2
 ratios: [1, 1]

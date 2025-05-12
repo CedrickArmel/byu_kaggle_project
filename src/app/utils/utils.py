@@ -147,12 +147,14 @@ def get_data_loader(
     dataset = BYUCustomDataset(cfg, df=df, mode=mode)
     loader = DataLoader(
         dataset=dataset,
-        batch_size=cfg.batch_size if mode == "train" else cfg.batch_size_val,
+        batch_size=cfg.batch_size if mode == "train" else cfg.val_batch_size,
         collate_fn=collate_fn,
         worker_init_fn=seed_worker,
-        num_workers=cfg.num_workers if mode == "train" else cfg.num_val_workers,
-        shuffle=cfg.shuffle if mode == "train" else False,
-        drop_last=True,
+        num_workers=cfg.num_workers if mode == "train" else cfg.val_num_workers,
+        shuffle=cfg.shuffle if mode == "train" else cfg.val_shuffle,
+        drop_last=cfg.drop_last if mode == "train" else cfg.val_drop_last,
+        persistent_workers=cfg.persistent_workers if mode == "train" else cfg.val_persistent_workers,
+        prefetch_factor=cfg.prefetch_factor if mode == "train" else cfg.val_prefetch_factor,
         generator=g,
     )
     return loader
@@ -386,7 +388,7 @@ def get_scheduler(
 
 
 def seed_worker(worker_id):
-    worker_seed = np.iinfo(np.uint32).max
+    worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
 
