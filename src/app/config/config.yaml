@@ -1,12 +1,12 @@
 # Callbacks
 filename: "{epoch}-{step}-{val_loss:.2f}-{fbeta1:.2f}-{fbeta2:.2f}"
-monitor: fbeta1
+monitor: val_loss
 save_last: true
 save_top_k: 3
-mode: max
+mode: min
 auto_insert_metric_name: true
 save_weights_only: false
-every_n_train_steps: 96
+every_n_train_steps: 24
 train_time_interval: null
 every_n_epochs: "${eval: None if not ${every_n_train_steps} and not ${train_time_interval} else None}"
 save_on_train_epoch_end: false
@@ -19,13 +19,14 @@ log_weight_decay: true
 batch_size: 8
 val_batch_size: 1
 drop_last: true
-val_drop_last: false
+val_drop_last: true
 pin_memory: false
 val_pin_memory: false
 test_pin_memory: false
 num_workers: 2  # TODO: 4 workers and increase prefetch_factor
 val_num_workers: 2
 shuffle: true
+val_shuffle: false
 train_sub_epochs: 1
 val_sub_epochs: 1
 prefetch_factor: 40
@@ -47,7 +48,7 @@ backbone_args:
   out_channels: "${n_classes}"
   backbone: "${backbone}"
   pretrained: "${pretrained}"
-class_weights: [256, 1]
+class_weights: [10000, 1]
 in_channels: 1
 mixup_p: 0.0
 mixup_beta: 1.0
@@ -70,11 +71,47 @@ byu_metric:
   dist_reduce_fx: "cat"
 
 # Optimizer
-lr: 1e-8
+lr: 1e-2
 optimizer: SGD
-sgd_momentum: 0.8
+sgd_momentum: 0.9
 sgd_nesterov: true
 weight_decay: 0.0
+
+# Optmization
+loss: dice_ce
+dice_ce_args:
+  to_onehot_y: true
+  sigmoid: false
+  softmax: true
+  other_act: null
+  squared_pred: false
+  jaccard: false
+  reduction: mean
+  smooth_nr: 1e-09
+  smooth_dr: 1e-09
+  batch: false
+  weight: None
+  lambda_dice: 1.0 
+  lambda_ce: 1.0
+  label_smoothing: 0.0
+
+dice_focal_args:
+  include_background: true
+  to_onehot_y: true
+  sigmoid: false
+  softmax: true
+  other_act: null
+  squared_pred: false
+  jaccard: false
+  reduction: mean
+  smooth_nr: 1e-09
+  smooth_dr: 1e-09
+  batch: false
+  gamma: 2.0
+  weight: None
+  lambda_dice: 1.0
+  lambda_focal: 1.0
+  alpha: null
 
 # Paths
 data_folder: "/kaggle/input/byu-locating-bacterial-flagellar-motors-2025"
@@ -87,10 +124,11 @@ emit_nvtx: true
 prof_filename: prof_filename.txt
 
 # Scheduler
-end_lambda: 1e-5
-milestones: 10
+end_lambda: 1e-3
+milestones: 2
 schedule: multistep
 warmup: 100
+restart_scheduler: true
 
 # Clipping
 grad_norm_type: 2
@@ -120,7 +158,7 @@ enable_checkpointing: true
 enable_model_summary: false
 enable_progress_bar: true
 logger: "${eval: not ${barebones} and not ${fast_dev_run}}"
-log_every_n_steps: 4
+log_every_n_steps: 2
 model_registry: null
 callbacks: "${eval: True if not ${barebones} and not ${fast_dev_run} else None}"
 check_val_every_n_epoch: null
@@ -144,15 +182,17 @@ best_th: 0.5
 epochs_step: null
 fold: 0
 last_score: 0.0
+manual_overfit: false
 overfit_tomos:
-  - "tomo_00e463"
   - "tomo_226cd8"
+  - "tomo_00e463"
   - "tomo_08bf73"
-  - "tomo_1ab322"
-  - "tomo_ae347a"
-  - "tomo_e22370"
   - "tomo_2daaee"
+  - "tomo_e22370"
   - "tomo_183270"
+  - "tomo_ae347a"
+  - "tomo_1ab322"
+
 seed: 4294967295
 
 # Post-Processing

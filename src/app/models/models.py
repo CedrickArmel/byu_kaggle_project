@@ -25,6 +25,7 @@ from typing import Any
 import numpy as np
 import torch
 import torch.nn.functional as F
+from monai.losses import DiceCELoss, DiceFocalLoss
 from monai.networks.nets.flexible_unet import (
     FLEXUNET_BACKBONE,
     SegmentationHead,
@@ -277,7 +278,7 @@ class DenseCrossEntropy(nn.Module):  # type: ignore[misc]
             ).sum()  # / class_weights.sum()
         else:
             loss = class_losses.sum()
-        return loss, class_losses
+        return loss  # , class_losses
 
 
 def to_ce_target(y: "torch.Tensor") -> "torch.Tensor":
@@ -300,9 +301,14 @@ class Net(nn.Module):  # type: ignore[misc]
         self.backbone = FlexibleUNet(**cfg.backbone_args)
         self.mixup = Mixup(cfg.mixup_beta)
         self.lvl_weights = torch.from_numpy(np.array(cfg.lvl_weights))
-        self.loss_fn = DenseCrossEntropy(
-            class_weights=torch.from_numpy(np.array(cfg.class_weights))
-        )
+        if cfg.loss == "dice_ce":
+            self.loss_fn = DiceCELoss(weight=np.array(cfg.class_weights), **self.cfg.dice_ce_args)
+        elif cfg.loss == "dice_focal":
+            self.loss_fn = DiceFocalLoss(weight=np.array(cfg.class_weights), **self.cfg.dice_focal_args)
+        else:
+            self.loss_fn = DenseCrossEntropy(
+                class_weights=torch.from_numpy(np.array(cfg.class_weights))
+                )
 
     def forward(self, batch: "dict[str, Any]") -> "dict[str, Any]":
         """Perform a forward pass through the model."""
@@ -342,7 +348,7 @@ class Net(nn.Module):  # type: ignore[misc]
                 ys = [F.adaptive_max_pool3d(y, o.shape[-3:]) for o in out]
                 loss_values = torch.stack(
                     [
-                        self.loss_fn(out[i], to_ce_target(ys[i]))[0]
+                        self.loss_fn(out[i], to_ce_target(ys[i]))  # [0]
                         for i in range(len(out))
                     ]
                 )

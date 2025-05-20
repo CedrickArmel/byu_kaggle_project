@@ -21,13 +21,14 @@
 # SOFTWARE.
 
 import os
+from collections import Counter
 from typing import Any
 
 import lightning as L
 import torch
 from omegaconf import DictConfig
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import LRScheduler
+from torch.optim.lr_scheduler import LRScheduler, MultiStepLR
 from torchmetrics.utilities import dim_zero_cat
 
 from app.metrics import BYUFbeta
@@ -75,26 +76,27 @@ class LNet(L.LightningModule):
                 param.requires_grad = False
         self.cfg.batch_size *= (self.trainer.world_size * self.cfg.sub_batch_size)
         self.cfg.val_batch_size *= self.trainer.world_size
+        self.cfg.lr *= self.trainer.world_size
+        stepping_batches = self.trainer.estimated_stepping_batches
+        self.training_steps: "int" = stepping_batches * self.cfg.max_epochs * self.trainer.world_size
 
     def forward(self, batch: "dict[str, Any]") -> "torch.Tensor":
         return self.model(batch)
+    
 
     def configure_optimizers(self) -> "dict[str, Any] | Optimizer":
         """Return the optimizer and an optionnal lr_scheduler"""
-        self.cfg.lr *= self.trainer.world_size
-        training_steps: "int" = self.trainer.num_training_batches * self.cfg.max_epochs
         optimizer: "Optimizer | None" = get_optimizer(self.cfg, self.model)
-        scheduler: LRScheduler = (
-            get_multistep_schedule_with_warmup(
-                optimizer,
-                warmup_steps=self.cfg.warmup,
-                m=self.cfg.milestones,
-                training_steps=training_steps,
-                end_lambda=self.cfg.end_lambda,
-            )
-            if self.cfg.overfit_batches == 0
-            else None
-        )
+        if (not self.cfg.manual_overfit) and self.cfg.overfit_batches == 0:
+            scheduler: LRScheduler = get_multistep_schedule_with_warmup(
+                    optimizer,
+                    warmup_steps=self.cfg.warmup,
+                    m=self.cfg.milestones,
+                    training_steps=self.training_steps,
+                    end_lambda=self.cfg.end_lambda,
+                )
+        else:
+            scheduler = MultiStepLR(optimizer, milestones=[416, 512, 608, 704, 800, 896, 992], gamma=0.1)
 
         return (
             dict(
@@ -112,19 +114,36 @@ class LNet(L.LightningModule):
     ) -> "torch.Tensor":
         output_dict = self(batch)
         loss = output_dict["loss"]
-        if self.trainer.is_global_zero:
-            self.log(
-                "train_loss",
-                loss,
-                on_step=True,
-                on_epoch=True,
-                logger=True,
-                prog_bar=True,
-                sync_dist=False,
-                rank_zero_only=True,
-                batch_size=self.cfg.batch_size,
-            )
+        self.log(
+            "train_loss",
+            loss,
+            on_step=True,
+            on_epoch=True,
+            logger=True,
+            prog_bar=True,
+            sync_dist=True,
+            batch_size=self.cfg.batch_size,
+        )
         return loss
+    
+    def on_train_batch_end(self, outputs, batch, batch_idx):
+        params = [p for p in self.parameters() if p.grad is not None]
+        if len(params) == 0:
+            total_norm = torch.tensor(0.0)
+        else:
+            total_norm = torch.norm(
+                torch.cat([p.detach().view(-1) for p in params]),
+                p=self.cfg.grad_norm_type)
+
+        self.log(
+            "weight_norm",
+            total_norm,
+            on_step=True,
+            on_epoch=True,
+            logger=True,
+            prog_bar=False,
+            sync_dist=True
+        )
 
     def validation_step(
         self, batch: "dict[str, Any]", batch_idx: "int"
@@ -137,7 +156,7 @@ class LNet(L.LightningModule):
         self.validation_step_outputs.append(preds)
         self.score_metric.update(preds, zyx)
         self.log(
-            "val_loss",
+            "val_loss",                                                                                                                           
             loss,
             on_step=True,
             on_epoch=True,
@@ -145,7 +164,7 @@ class LNet(L.LightningModule):
             prog_bar=True,
             sync_dist=True,
             batch_size=self.cfg.val_batch_size
-        )
+    )
         return preds
 
     def on_validation_epoch_end(self) -> "None":
@@ -184,40 +203,41 @@ class LNet(L.LightningModule):
         """Gradient clipping and tracking before/afater clipping"""
         # if self.global_step % self.trainer.log_every_n_steps == 0:
         grads = [p.grad for p in self.parameters() if p.grad is not None]
-        total_norm_before = torch.norm(
-            torch.stack(
-                [torch.norm(g.detach(), self.cfg.grad_norm_type) for g in grads]
-            ),
-            2,
-        )
+        if len(grads) == 0:
+            total_norm_before = torch.tensor(0.0)
+        else:
+            total_norm_before = total_norm = torch.norm(
+                torch.cat([g.detach().view(-1) for g in grads]),
+                p=self.cfg.grad_norm_type)
+
         self.clip_gradients(
             optimizer,
             gradient_clip_val=gradient_clip_val,
             gradient_clip_algorithm=gradient_clip_algorithm,
         )
         grads = [p.grad for p in self.parameters() if p.grad is not None]
-        total_norm_after = torch.norm(
-            torch.stack(
-                [torch.norm(g.detach(), self.cfg.grad_norm_type) for g in grads]
-            ),
-            2,
+        if len(grads) == 0:
+            total_norm_after = torch.tensor(0.0)
+        else:
+            total_norm_after = torch.norm(
+                torch.cat([g.detach().view(-1) for g in grads]),
+                p=self.cfg.grad_norm_type)
+
+        self.log(
+            "grad_norm",
+            total_norm_before,
+            on_step=True,
+            on_epoch=True,
+            logger=True,
+            prog_bar=False,
+            sync_dist=True
         )
-        if self.trainer.is_global_zero:
-            self.log(
-                "grad_norm",
-                total_norm_before,
-                on_step=True,
-                on_epoch=True,
-                logger=True,
-                rank_zero_only=True,
-                prog_bar=False,
-            )
-            self.log(
-                "clip_grad_norm",
-                total_norm_after,
-                on_step=True,
-                on_epoch=True,
-                logger=True,
-                rank_zero_only=True,
-                prog_bar=False,
-            )
+        self.log(
+            "clip_grad_norm",
+            total_norm_after,
+            on_step=True,
+            on_epoch=True,
+            logger=True,
+            prog_bar=False,
+            sync_dist=True
+        )
