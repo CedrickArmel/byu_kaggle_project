@@ -148,7 +148,7 @@ def post_process_pipeline(
     )
 
     preds: "torch.Tensor" = rec_img.softmax(1)
-    preds = preds[:, 0, :][None,]
+    preds = preds[:, 1, :][None,]
 
     nms: "torch.Tensor" = simple_nms(preds, nms_radius=cfg.nms_radius)  # (1,B, D, H, W)
     nms = nms.squeeze(dim=0)  # (B, D, H, W)

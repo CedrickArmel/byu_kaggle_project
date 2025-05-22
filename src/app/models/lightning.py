@@ -28,12 +28,12 @@ import lightning as L
 import torch
 from omegaconf import DictConfig
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import LRScheduler, MultiStepLR
+from torch.optim.lr_scheduler import LRScheduler
 from torchmetrics.utilities import dim_zero_cat
 
 from app.metrics import BYUFbeta
 from app.processings import post_process_pipeline
-from app.utils import get_multistep_schedule_with_warmup, get_optimizer
+from app.utils import get_optimizer, get_scheduler
 
 from .models import Net
 
@@ -67,7 +67,6 @@ class LNet(L.LightningModule):
                 dist_sync_on_step=self.cfg.byu_metric.dist_sync_on_step,
                 sync_on_compute=self.cfg.byu_metric.sync_on_compute,
             )
-        
 
     def setup(self, stage: "str") -> "None":
         """Called at the beginning of each stage in oder to build model dynamically."""
@@ -78,26 +77,15 @@ class LNet(L.LightningModule):
         self.cfg.val_batch_size *= self.trainer.world_size
         self.cfg.lr *= self.trainer.world_size
         stepping_batches = self.trainer.estimated_stepping_batches
-        self.training_steps: "int" = stepping_batches * self.cfg.max_epochs * self.trainer.world_size
+        self.training_steps = stepping_batches * self.cfg.max_epochs * self.trainer.world_size
 
     def forward(self, batch: "dict[str, Any]") -> "torch.Tensor":
         return self.model(batch)
     
-
     def configure_optimizers(self) -> "dict[str, Any] | Optimizer":
         """Return the optimizer and an optionnal lr_scheduler"""
-        optimizer: "Optimizer | None" = get_optimizer(self.cfg, self.model)
-        if (not self.cfg.manual_overfit) and self.cfg.overfit_batches == 0:
-            scheduler: LRScheduler = get_multistep_schedule_with_warmup(
-                    optimizer,
-                    warmup_steps=self.cfg.warmup,
-                    m=self.cfg.milestones,
-                    training_steps=self.training_steps,
-                    end_lambda=self.cfg.end_lambda,
-                )
-        else:
-            scheduler = MultiStepLR(optimizer, milestones=[416, 512, 608, 704, 800, 896, 992], gamma=0.1)
-
+        optimizer: "Optimizer" = get_optimizer(self.cfg, self.model)
+        scheduler = get_scheduler(cfg=self.cfg, optimizer=optimizer, training_steps=self.training_steps)
         return (
             dict(
                 optimizer=optimizer,
@@ -105,8 +93,6 @@ class LNet(L.LightningModule):
                     scheduler=scheduler, interval="step", frequency=1, name="lr"
                 ),
             )
-            if scheduler is not None
-            else optimizer
         )
 
     def training_step(
@@ -114,16 +100,14 @@ class LNet(L.LightningModule):
     ) -> "torch.Tensor":
         output_dict = self(batch)
         loss = output_dict["loss"]
-        self.log(
-            "train_loss",
-            loss,
+        log_dict = dict(train_loss=loss, train_dice_loss=output_dict["dice"])
+        self.log_dict(
+            log_dict, 
             on_step=True,
             on_epoch=True,
             logger=True,
             prog_bar=True,
-            sync_dist=True,
-            batch_size=self.cfg.batch_size,
-        )
+            sync_dist=True)
         return loss
     
     def on_train_batch_end(self, outputs, batch, batch_idx):
@@ -134,7 +118,6 @@ class LNet(L.LightningModule):
             total_norm = torch.norm(
                 torch.cat([p.detach().view(-1) for p in params]),
                 p=self.cfg.grad_norm_type)
-
         self.log(
             "weight_norm",
             total_norm,
@@ -152,19 +135,17 @@ class LNet(L.LightningModule):
         zyx = batch["zyx"]
         output_dict = self(batch)
         loss = output_dict["loss"]
+        log_dict = dict(val_loss=loss, val_dice_loss=output_dict["dice"])
         preds = post_process_pipeline(self.cfg, output_dict)
         self.validation_step_outputs.append(preds)
         self.score_metric.update(preds, zyx)
-        self.log(
-            "val_loss",                                                                                                                           
-            loss,
-            on_step=True,
+        self.log_dict(
+            log_dict,
+            on_step=False,
             on_epoch=True,
             logger=True,
             prog_bar=True,
-            sync_dist=True,
-            batch_size=self.cfg.val_batch_size
-    )
+            sync_dist=True)
         return preds
 
     def on_validation_epoch_end(self) -> "None":
@@ -190,7 +171,6 @@ class LNet(L.LightningModule):
                 f"val_epoch_{self.current_epoch}_end_step{self.global_step}_rank{self.global_rank}.pt",
             ),
         )
-
         self.score_metric.reset()
         self.validation_step_outputs.clear()
 
@@ -222,22 +202,17 @@ class LNet(L.LightningModule):
             total_norm_after = torch.norm(
                 torch.cat([g.detach().view(-1) for g in grads]),
                 p=self.cfg.grad_norm_type)
+            
+        log_dict = dict(grad_norm=total_norm_before, clip_grad_norm=total_norm_after)
 
-        self.log(
-            "grad_norm",
-            total_norm_before,
+        self.log_dict(
+            log_dict,
             on_step=True,
             on_epoch=True,
             logger=True,
             prog_bar=False,
             sync_dist=True
         )
-        self.log(
-            "clip_grad_norm",
-            total_norm_after,
-            on_step=True,
-            on_epoch=True,
-            logger=True,
-            prog_bar=False,
-            sync_dist=True
-        )
+
+    def on_save_checkpoint(self, checkpoint):
+        checkpoint["state_dict"]["model.loss_fn.focal.class_weight"] = checkpoint["state_dict"]["model.loss_fn.focal.class_weight"].squeeze()

@@ -48,7 +48,7 @@ backbone_args:
   out_channels: "${n_classes}"
   backbone: "${backbone}"
   pretrained: "${pretrained}"
-class_weights: [10000, 1]
+class_weights: [1, 256]
 in_channels: 1
 mixup_p: 0.0
 mixup_beta: 1.0
@@ -71,30 +71,13 @@ byu_metric:
   dist_reduce_fx: "cat"
 
 # Optimizer
-lr: 1e-2
+lr: 0.1
 optimizer: SGD
 sgd_momentum: 0.9
 sgd_nesterov: true
 weight_decay: 0.0
 
 # Optmization
-loss: dice_ce
-dice_ce_args:
-  to_onehot_y: true
-  sigmoid: false
-  softmax: true
-  other_act: null
-  squared_pred: false
-  jaccard: false
-  reduction: mean
-  smooth_nr: 1e-09
-  smooth_dr: 1e-09
-  batch: false
-  weight: None
-  lambda_dice: 1.0 
-  lambda_ce: 1.0
-  label_smoothing: 0.0
-
 dice_focal_args:
   include_background: true
   to_onehot_y: true
@@ -104,14 +87,28 @@ dice_focal_args:
   squared_pred: false
   jaccard: false
   reduction: mean
-  smooth_nr: 1e-09
-  smooth_dr: 1e-09
+  smooth_nr: 1e-10
+  smooth_dr: 1e-10
   batch: false
   gamma: 2.0
-  weight: None
   lambda_dice: 1.0
   lambda_focal: 1.0
   alpha: null
+
+dice_args:
+  include_background: true
+  to_onehot_y: true
+  sigmoid: false
+  softmax: true
+  other_act: null
+  squared_pred: false
+  jaccard: false
+  reduction: mean
+  smooth_nr: 1e-10
+  smooth_dr: 1e-10
+  batch: false
+  weight: null
+
 
 # Paths
 data_folder: "/kaggle/input/byu-locating-bacterial-flagellar-motors-2025"
@@ -129,6 +126,19 @@ milestones: 2
 schedule: multistep
 warmup: 100
 restart_scheduler: true
+cosine_args:
+  T_max: 100
+  eta_min: 1e-5
+  last_epoch: -1
+cosine_wr_args:
+  T_0: 50
+  T_mult: 1
+  eta_min: 1e-5
+  last_epoch: -1
+linear_args:
+  start_factor: 1e-05
+  end_factor: 1.0
+  total_iters: "${warmup}"
 
 # Clipping
 grad_norm_type: 2

@@ -25,7 +25,7 @@ from typing import Any
 import numpy as np
 import torch
 import torch.nn.functional as F
-from monai.losses import DiceCELoss, DiceFocalLoss
+from monai.losses import DiceLoss, DiceFocalLoss
 from monai.networks.nets.flexible_unet import (
     FLEXUNET_BACKBONE,
     SegmentationHead,
@@ -258,37 +258,6 @@ class Mixup(nn.Module):  # type: ignore[misc]
         return X, Y
 
 
-class DenseCrossEntropy(nn.Module):  # type: ignore[misc]
-    def __init__(self, class_weights: "torch.Tensor | None" = None) -> None:
-        """Initialize the DenseCrossEntropy loss function."""
-        super(DenseCrossEntropy, self).__init__()
-        self.class_weights = class_weights
-
-    def forward(
-        self, x: "torch.Tensor", target: "torch.Tensor"
-    ) -> "tuple[torch.Tensor, torch.Tensor]":
-        x = x.float()
-        target = target.float()
-        logprobs = torch.nn.functional.log_softmax(x, dim=1, dtype=torch.float)
-        loss = -logprobs * target
-        class_losses = loss.mean((0, 2, 3, 4))
-        if self.class_weights is not None:
-            loss = (
-                class_losses * self.class_weights.to(class_losses.device)
-            ).sum()  # / class_weights.sum()
-        else:
-            loss = class_losses.sum()
-        return loss  # , class_losses
-
-
-def to_ce_target(y: "torch.Tensor") -> "torch.Tensor":
-    """Convert the target to a format suitable for cross-entropy loss."""
-    y_bg = 1 - y.sum(1, keepdim=True).clamp(0, 1)
-    y = torch.cat([y, y_bg], 1)
-    y = y / y.sum(1, keepdim=True)
-    return y
-
-
 class Net(nn.Module):  # type: ignore[misc]
     """Adapted from ChristofHenkel/kaggle-cryoet-1st-place-segmentation/models
     to support sub_batches and avoid OOM errors.
@@ -301,14 +270,8 @@ class Net(nn.Module):  # type: ignore[misc]
         self.backbone = FlexibleUNet(**cfg.backbone_args)
         self.mixup = Mixup(cfg.mixup_beta)
         self.lvl_weights = torch.from_numpy(np.array(cfg.lvl_weights))
-        if cfg.loss == "dice_ce":
-            self.loss_fn = DiceCELoss(weight=np.array(cfg.class_weights), **self.cfg.dice_ce_args)
-        elif cfg.loss == "dice_focal":
-            self.loss_fn = DiceFocalLoss(weight=np.array(cfg.class_weights), **self.cfg.dice_focal_args)
-        else:
-            self.loss_fn = DenseCrossEntropy(
-                class_weights=torch.from_numpy(np.array(cfg.class_weights))
-                )
+        self.loss_fn = DiceFocalLoss(weight=torch.from_numpy(np.array(cfg.class_weights)), **self.cfg.dice_focal_args)
+        self.loss_metric = DiceLoss(**self.cfg.dice_args)
 
     def forward(self, batch: "dict[str, Any]") -> "dict[str, Any]":
         """Perform a forward pass through the model."""
@@ -326,9 +289,9 @@ class Net(nn.Module):  # type: ignore[misc]
                 for i in range(0, len(batch["input"]), bs)
             ]
 
-        outputs = {}
-        all_logits = []
-        all_losses = []
+        outputs = {}        
+        all_outs = []
+        all_ys = []
 
         has_target = "target" in batch  # Check only once
 
@@ -340,27 +303,27 @@ class Net(nn.Module):  # type: ignore[misc]
                 x, y = self.mixup(x, y)
 
             out = self.backbone(x)
-
-            if not self.training:
-                all_logits.append(out[-1])
-
+            all_outs.append(out)
             if has_target:
                 ys = [F.adaptive_max_pool3d(y, o.shape[-3:]) for o in out]
-                loss_values = torch.stack(
-                    [
-                        self.loss_fn(out[i], to_ce_target(ys[i]))  # [0]
-                        for i in range(len(out))
-                    ]
-                )
-                lvl_weights = self.lvl_weights.to(loss_values.device)
-                weighted_loss = (loss_values * lvl_weights).sum() / lvl_weights.sum()
-                all_losses.append(weighted_loss)
+                all_ys.append(ys)
 
+        outs = [torch.cat([out[i] for out in all_outs], dim=0) for i in range(len(out))]
+        
         if has_target:
-            outputs["loss"] = torch.stack(all_losses).mean()
+            yss = [torch.cat([ys[i] for ys in all_ys], dim=0) for i in range(len(out))]
+            loss_values = torch.stack(
+                [
+                    self.loss_fn(outs[i], yss[i])
+                    for i in range(len(outs))
+                ]
+            )
+            lvl_weights = self.lvl_weights.to(loss_values.device)
+            outputs["loss"] = (loss_values * lvl_weights).sum() / lvl_weights.sum()
+            outputs["dice"] = self.loss_metric(outs[-1], yss[-1])
 
         if not self.training:
-            outputs["logits"] = torch.cat(all_logits, dim=0)
+            outputs["logits"] = outs[-1]
             if "location" in batch:
                 outputs["location"] = batch["location"]
             if "scale" in batch:

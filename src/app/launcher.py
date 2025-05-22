@@ -30,12 +30,10 @@ import hydra
 from lightning.pytorch.loggers import TensorBoardLogger
 from omegaconf import DictConfig, OmegaConf
 
-from app.config import root_dir
 from app.models import LNet
 from app.trainers import get_lightning_trainer
 from app.utils import get_callbacks, get_data, get_data_loader, get_profiler, set_seed
 
-OmegaConf.register_new_resolver("root_dir", resolver=root_dir, replace=True)
 OmegaConf.register_new_resolver("eval", resolver=eval, replace=True)
 
 
