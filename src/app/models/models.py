@@ -25,7 +25,7 @@ from typing import Any
 import numpy as np
 import torch
 import torch.nn.functional as F
-from monai.losses import DiceLoss, DiceFocalLoss
+from monai.losses import DiceFocalLoss, DiceLoss
 from monai.networks.nets.flexible_unet import (
     FLEXUNET_BACKBONE,
     SegmentationHead,
@@ -180,18 +180,12 @@ class FlexibleUNet(nn.Module):  # type: ignore[misc]
             align_corners=None,
             is_pad=is_pad,
         )
-        # Instanciate a segmentation head for each feature maps outputed by PatchedUNetDecoder
-        self.segmentation_heads = nn.ModuleList(
-            [
-                SegmentationHead(
-                    spatial_dims=spatial_dims,
-                    in_channels=decoder_channel,
-                    out_channels=out_channels + 1,
-                    kernel_size=3,
-                    act=None,
-                )
-                for decoder_channel in decoder_channels[:-1]
-            ]
+        self.segmentation_heads = SegmentationHead(
+            spatial_dims=spatial_dims,
+            in_channels=decoder_channels[0],
+            out_channels=out_channels + 1,
+            kernel_size=3,
+            act=None,
         )
 
     def forward(self, inputs: torch.Tensor) -> "list[torch.Tensor]":
@@ -206,9 +200,7 @@ class FlexibleUNet(nn.Module):  # type: ignore[misc]
         x = inputs
         enc_out = self.encoder(x)
         decoder_out = self.decoder(enc_out, self.skip_connect)[1:-1]
-        x_seg = [
-            self.segmentation_heads[i](decoder_out[i]) for i in range(len(decoder_out))
-        ]  # segment each feature map
+        x_seg = self.segmentation_heads(decoder_out[0])  # segment the first feature map
         return x_seg
 
 
@@ -269,8 +261,10 @@ class Net(nn.Module):  # type: ignore[misc]
         self.cfg = cfg
         self.backbone = FlexibleUNet(**cfg.backbone_args)
         self.mixup = Mixup(cfg.mixup_beta)
-        self.lvl_weights = torch.from_numpy(np.array(cfg.lvl_weights))
-        self.loss_fn = DiceFocalLoss(weight=torch.from_numpy(np.array(cfg.class_weights)), **self.cfg.dice_focal_args)
+        self.loss_fn = DiceFocalLoss(
+            weight=torch.from_numpy(np.array(cfg.class_weights)),
+            **self.cfg.dice_focal_args,
+        )
         self.loss_metric = DiceLoss(**self.cfg.dice_args)
 
     def forward(self, batch: "dict[str, Any]") -> "dict[str, Any]":
@@ -289,7 +283,7 @@ class Net(nn.Module):  # type: ignore[misc]
                 for i in range(0, len(batch["input"]), bs)
             ]
 
-        outputs = {}        
+        outputs = {}
         all_outs = []
         all_ys = []
 
@@ -305,31 +299,21 @@ class Net(nn.Module):  # type: ignore[misc]
             out = self.backbone(x)
             all_outs.append(out)
             if has_target:
-                ys = [F.adaptive_max_pool3d(y, o.shape[-3:]) for o in out]
+                ys = F.adaptive_max_pool3d(y, out.shape[-3:])
                 all_ys.append(ys)
 
-        outs = [torch.cat([out[i] for out in all_outs], dim=0) for i in range(len(out))]
-        
+        outs = torch.cat(all_outs, dim=0)
         if has_target:
-            yss = [torch.cat([ys[i] for ys in all_ys], dim=0) for i in range(len(out))]
-            loss_values = torch.stack(
-                [
-                    self.loss_fn(outs[i], yss[i])
-                    for i in range(len(outs))
-                ]
-            )
-            lvl_weights = self.lvl_weights.to(loss_values.device)
-            outputs["loss"] = (loss_values * lvl_weights).sum() / lvl_weights.sum()
-            outputs["dice"] = self.loss_metric(outs[-1], yss[-1])
+            yss = torch.cat(all_ys, dim=0)
+            outputs["loss"] = self.loss_fn(outs, yss)
+            outputs["dice"] = self.loss_metric(outs, yss)
 
         if not self.training:
-            outputs["logits"] = outs[-1]
+            outputs["logits"] = outs
             if "location" in batch:
                 outputs["location"] = batch["location"]
             if "scale" in batch:
                 outputs["scale"] = batch["scale"]
             if "id" in batch:
                 outputs["id"] = batch["id"]
-            if "dims" in batch:
-                outputs["dims"] = batch["dims"]
         return outputs

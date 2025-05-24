@@ -148,19 +148,12 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
         image = torch.stack(slices).squeeze()
         return image
 
-    def get_locs_n_vxs(
-        self, tomo_id: "str", scale: "torch.Tensor"
-    ) -> "torch.Tensor | NDArray":
-        "return motors centers coordinates (zyx) and voxel spacing (vxs)"
-        zyx_: "NDArray" = self.tomo_dict.get_group(tomo_id)[
-            ["z", "y", "x", "id", "vxs"]
-        ].values.astype("float")
-        if (zyx_[:, :-2] == -1).any():
-            return zyx_
-        zyx = torch.zeros(zyx_.shape)
-        zyx[:, :-2] = torch.ceil(torch.tensor(zyx_[:, :-2]) * scale)
-        zyx[:, -2:] = torch.tensor(zyx_[:, -2:])
-        return zyx  # vxs
+    def get_scaled_zyx(self, zyx: "NDArray", scale: "torch.Tensor") -> "torch.Tensor":
+        "return scaled motors centers coordinates (zyx) and voxel spacing (vxs)"
+        zyx_ = torch.zeros(zyx.shape)
+        zyx_[:, :-2] = torch.ceil(torch.tensor(zyx[:, :-2]) * scale)
+        zyx_[:, -2:] = torch.tensor(zyx[:, -2:])
+        return zyx_
 
     def reduce_volume(self, volume: "torch.Tensor") -> "torch.Tensor":
         """_Downsample to a smaller tomogram_
@@ -203,25 +196,24 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
         tomogram = self.reduce_volume(tomogram)
 
         if self.mode != "test":
-            zyx: "torch.Tensor | NDArray" = self.get_locs_n_vxs(
-                tomo_id, scale
-            )  # could return vxs there. see get_locs_n_vxs definition
+            zyx_: "NDArray" = self.tomo_dict.get_group(tomo_id)[
+                ["z", "y", "x", "id", "vxs"]
+            ].values.astype("float")
             mask = torch.zeros_like(tomogram)
-            if isinstance(zyx, torch.Tensor):
+            if (zyx_[:, :-2] != -1).all():
+                zyx_scaled: "torch.Tensor" = self.get_scaled_zyx(zyx_, scale)
                 mask[
-                    zyx[:, 0].to(torch.int),
-                    zyx[:, 1].to(torch.int),
-                    zyx[:, 2].to(torch.int),
+                    zyx_scaled[:, 0].to(torch.int),
+                    zyx_scaled[:, 1].to(torch.int),
+                    zyx_scaled[:, 2].to(torch.int),
                 ] = 1.0
-            else:
-                zyx = torch.tensor(zyx)
+            zyx = torch.from_numpy(zyx_)
             return {
                 "input": tomogram,
                 "target": mask,
                 "zyx": zyx,
                 "id": tomo_idx,
                 "scale": scale,
-                "dim": s,
             }
         else:
-            return {"input": tomogram, "id": tomo_idx, "scale": scale, "dim": s}
+            return {"input": tomogram, "id": tomo_idx, "scale": scale}

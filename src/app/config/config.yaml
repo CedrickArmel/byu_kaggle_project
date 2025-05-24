@@ -1,6 +1,6 @@
 # Callbacks
 filename: "{epoch}-{step}-{val_loss:.2f}-{fbeta1:.2f}-{fbeta2:.2f}"
-monitor: val_loss
+monitor: val_dice_loss
 save_last: true
 save_top_k: 3
 mode: min
@@ -29,10 +29,10 @@ shuffle: true
 val_shuffle: false
 train_sub_epochs: 1
 val_sub_epochs: 1
-prefetch_factor: 40
-val_prefetch_factor: 16
+prefetch_factor: 24
+val_prefetch_factor: 12
 persistent_workers: true
-val_persistent_workers: false
+val_persistent_workers: true
 
 # Metrics
 dt_multiplier: 1.0
@@ -208,6 +208,8 @@ seed: 4294967295
 # Post-Processing
 nms_radius: 16
 topk: 10
+up_interp_mode: "trilinear"
+down_interp_mode: "trilinear"
 
 # Transforms
 gamma: 2

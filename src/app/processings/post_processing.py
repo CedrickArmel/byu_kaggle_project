@@ -120,7 +120,7 @@ def post_process_pipeline(
     img = F.interpolate(
         img,
         size=roi_size.tolist(),
-        mode="trilinear",
+        mode=cfg.up_interp_mode,
         align_corners=False,
     )
 
@@ -143,7 +143,7 @@ def post_process_pipeline(
     rec_img = F.interpolate(
         rec_img,
         size=[d // 2 for d in new_size.tolist()],
-        mode="trilinear",
+        mode=cfg.down_interp_mode,
         align_corners=False,
     )
 
