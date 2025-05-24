@@ -112,7 +112,6 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
                     "location": torch.from_numpy(data["input"].meta["location"]),  # type: ignore[call-overload]
                     "id": data["id"],  # type: ignore[call-overload]
                     "scale": data["scale"],  # type: ignore[call-overload]
-                    "dims": data["dim"],  # type: ignore[call-overload]
                     "zyx": data["zyx"],  # type: ignore[call-overload]
                 }
         else:
@@ -122,7 +121,6 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
                 "location": torch.from_numpy(data["input"].meta["location"]),  # type: ignore[call-overload]
                 "id": data["id"],  # type: ignore[call-overload]
                 "scale": data["scale"],  # type: ignore[call-overload]
-                "dims": data["dim"],  # type: ignore[call-overload]
             }
         return feature_dict
 
