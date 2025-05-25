@@ -1,36 +1,51 @@
-import datetime
-import os
-from glob import glob
+# MIT License
+#
+# Copyright (c) 2024, Yebouet Cédrick-Armel
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
-import numpy as np
+# mypy: ignore-errors
+
+
 import torch
-import torch.nn.functional as F
-
 from omegaconf import OmegaConf
-from torchinfo import summary
-from app.metrics import BYUFbeta
-from app.metrics.metrics import get_topk_by_id, thresholder, filter_negatives
-from app.models.lightning import Net
+
 from app.models import LNet
 from app.utils import get_data, get_data_loader
-from app.processings.post_processing import get_output_size, reconstruct, simple_nms
-
-from numpy.typing import NDArray
-from scipy.spatial import KDTree
-from torchmetrics.utilities import dim_zero_cat
 
 OmegaConf.register_new_resolver("eval", resolver=eval, replace=True)
 
 if __name__ == "__main__":
     cfg = OmegaConf.load("src/app/config/config.yaml")
+    cfg.fold = 0
     cfg.backbone = "resnet10"
+    cfg.backbone_args.pretrained = False
     cfg.val_persistent_workers = True
     train_df, val_df = get_data(cfg, mode="fit")
     train_loader = get_data_loader(cfg, train_df, mode="train")
     val_loader = get_data_loader(cfg, val_df, mode="validation")
 
-    state =  torch.load("/kaggle/working/resnet10/version_33/checkpoints/last.ckpt", map_location="cpu")
-    cfg.virt_eval_sub_batch_size = 1
+    state = torch.load(
+        "/kaggle/working/resnet10/version_33/checkpoints/epoch=4-step=168-val_loss=0.85-fbeta1=0.00-fbeta2=0.82.ckpt",
+        map_location="cpu",
+    )
+    cfg.virt_eval_sub_batch_size = 8
 
     model = LNet(cfg)
     model.load_state_dict(state["state_dict"])
@@ -41,7 +56,10 @@ if __name__ == "__main__":
         if batch["id"][0] not in [16, 38, 200, 422]:
             continue
         print(batch["id"][0])
-        b_cuda = {k:v.to("cuda:0") if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        b_cuda = {
+            k: v.to("cuda:0") if isinstance(v, torch.Tensor) else v
+            for k, v in batch.items()
+        }
         model.to("cuda:0")
         model.eval()
         with torch.no_grad():
@@ -51,5 +69,5 @@ if __name__ == "__main__":
         logits = logits.cpu().numpy()
         torch.save(logits, f"/kaggle/working/logits{batch['id'][0]}.pt")
         counter += 1
-        if counter == 4:
+        if counter == 1:
             break

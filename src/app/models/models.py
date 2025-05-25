@@ -182,7 +182,7 @@ class FlexibleUNet(nn.Module):  # type: ignore[misc]
         )
         self.segmentation_heads = SegmentationHead(
             spatial_dims=spatial_dims,
-            in_channels=decoder_channels[0],
+            in_channels=decoder_channels[-1],
             out_channels=out_channels + 1,
             kernel_size=3,
             act=None,
@@ -199,8 +199,8 @@ class FlexibleUNet(nn.Module):  # type: ignore[misc]
         """
         x = inputs
         enc_out = self.encoder(x)
-        decoder_out = self.decoder(enc_out, self.skip_connect)[1:-1]
-        x_seg = self.segmentation_heads(decoder_out[0])  # segment the first feature map
+        decoder_out = self.decoder(enc_out, self.skip_connect)[-1]
+        x_seg = self.segmentation_heads(decoder_out)  # segment the first feature map
         return x_seg
 
 

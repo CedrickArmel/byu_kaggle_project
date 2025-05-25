@@ -29,10 +29,10 @@ shuffle: true
 val_shuffle: false
 train_sub_epochs: 1
 val_sub_epochs: 1
-prefetch_factor: 24
-val_prefetch_factor: 12
+prefetch_factor: 8
+val_prefetch_factor: 4
 persistent_workers: true
-val_persistent_workers: true
+val_persistent_workers: false
 
 # Metrics
 dt_multiplier: 1.0
@@ -208,8 +208,11 @@ seed: 4294967295
 # Post-Processing
 nms_radius: 16
 topk: 10
-up_interp_mode: "trilinear"
-down_interp_mode: "trilinear"
+up_interp_mode: "nearest-exact"
+up_align_corners: null
+down_interp_mode: "nearest-exact"
+down_align_corners: null
+
 
 # Transforms
 gamma: 2

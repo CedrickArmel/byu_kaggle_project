@@ -117,12 +117,7 @@ def post_process_pipeline(
     scales: "torch.Tensor" = net_output["scale"]
     tomo_ids: "torch.Tensor" = torch.tensor(net_output["id"], device=device)
 
-    img = F.interpolate(
-        img,
-        size=roi_size.tolist(),
-        mode=cfg.up_interp_mode,
-        align_corners=False,
-    )
+    # TODO: in future interpolate only if the size is not equal to roi_size there
 
     out_size = get_output_size(img, locations, roi_size, device)
     rec_img = reconstruct(
@@ -144,7 +139,7 @@ def post_process_pipeline(
         rec_img,
         size=[d // 2 for d in new_size.tolist()],
         mode=cfg.down_interp_mode,
-        align_corners=False,
+        align_corners=cfg.down_align_corners,
     )
 
     preds: "torch.Tensor" = rec_img.softmax(1)
