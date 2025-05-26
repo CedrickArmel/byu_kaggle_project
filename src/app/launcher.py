@@ -47,13 +47,9 @@ def main(cfg: "DictConfig") -> "None":
     start_time = datetime.datetime.now(ZoneInfo("Europe/Paris")).strftime(
         "%Y%m%d%H%M%S"
     )
-    cfg.default_root_dir = os.path.join(
-        cfg.output_dir,
-        cfg.backbone,
-        f"seed_{cfg.seed}",
-        f"fold{cfg.fold}",
-        f"{start_time}",
-    )
+    save_dir = os.path.join(cfg.output_dir, cfg.backbone, f"seed_{cfg.seed}")
+
+    cfg.default_root_dir = os.path.join(save_dir, f"fold{cfg.fold}", f"{start_time}")
 
     os.makedirs(cfg.default_root_dir, exist_ok=True)
     chckpt_cb, lr_cb = get_callbacks(cfg)
@@ -62,7 +58,7 @@ def main(cfg: "DictConfig") -> "None":
 
     profiler = get_profiler(cfg)
     logger = (
-        TensorBoardLogger(save_dir=cfg.output_dir, name=cfg.backbone)
+        TensorBoardLogger(save_dir=save_dir, name=f"fold{cfg.fold}")
         if cfg.logger
         else cfg.logger
     )

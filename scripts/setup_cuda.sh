@@ -81,6 +81,7 @@ echo "🔄 Reloading shell..."
 source ~/.bashrc
 
 echo "🔄 Creating virtual environment..."
-pyenv virtualenv system byu_project
+pyenv install 3.10.16
+pyenv virtualenv 3.10.16 byu_project
 
 echo "✅ Setup completed!"
