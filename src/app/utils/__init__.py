@@ -28,6 +28,7 @@ from .utils import (
     get_optimizer,
     get_profiler,
     get_scheduler,
+    initialize_weights,
     set_seed,
 )
 
@@ -39,5 +40,6 @@ __all__ = [
     "get_optimizer",
     "get_profiler",
     "get_scheduler",
+    "initialize_weights",
     "set_seed",
 ]
