@@ -29,6 +29,9 @@ def get_transforms(cfg: "DictConfig", transform: "str" = "static") -> "mt.Transf
         raise ValueError(
             "transform argument must be one of eval, static, test or train!"
         )
+    roi_size = cfg.dataset_args.transforms.roi_size
+    batch_size = cfg.dataset_args.transforms.batch_size
+    ratios = cfg.dataset_args.transforms.ratios
 
     if transform.lower() == "static":
         compose = mt.Compose(
@@ -36,8 +39,7 @@ def get_transforms(cfg: "DictConfig", transform: "str" = "static") -> "mt.Transf
                 mt.EnsureChannelFirstd(
                     keys=["input", "target"], channel_dim="no_channel"
                 ),
-                mt.AdjustContrastd(keys=["input"], gamma=cfg.gamma),
-                mt.ScaleIntensityd(keys=["input"]),
+                mt.NormalizeIntensityd(keys=["input"]),
                 mt.Orientationd(keys=["input", "target"], axcodes="RAS"),
             ]
         )
@@ -47,10 +49,10 @@ def get_transforms(cfg: "DictConfig", transform: "str" = "static") -> "mt.Transf
                 mt.RandCropByLabelClassesd(
                     keys=["input", "target"],
                     label_key="target",
-                    spatial_size=list(cfg.roi_size),
-                    num_samples=cfg.sub_batch_size,
+                    spatial_size=list(roi_size),
+                    num_samples=batch_size,
                     num_classes=2,
-                    ratios=cfg.ratios,
+                    ratios=ratios,
                     warn=False,
                 )
             ]
@@ -60,7 +62,7 @@ def get_transforms(cfg: "DictConfig", transform: "str" = "static") -> "mt.Transf
             [
                 mt.GridPatchd(
                     keys=["input", "target"],
-                    patch_size=list(cfg.roi_size),
+                    patch_size=list(roi_size),
                     pad_mode="reflect",
                 )
             ]
@@ -69,11 +71,10 @@ def get_transforms(cfg: "DictConfig", transform: "str" = "static") -> "mt.Transf
         compose = mt.Compose(
             [
                 mt.EnsureChannelFirstd(keys=["input"], channel_dim="no_channel"),
-                mt.AdjustContrastd(keys=["input"], gamma=cfg.gamma),
-                mt.ScaleIntensityd(keys=["input"]),
+                mt.NormalizeIntensityd(keys=["input"]),
                 mt.Orientationd(keys=["input"], axcodes="RAS"),
                 mt.GridPatchd(
-                    keys=["input"], patch_size=list(cfg.roi_size), pad_mode="reflect"
+                    keys=["input"], patch_size=list(roi_size), pad_mode="reflect"
                 ),
             ]
         )

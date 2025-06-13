@@ -69,7 +69,7 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
         self.cfg = cfg
         self.mode = mode
         self.data_folder = cfg.data_folder
-        self.new_size: "tuple[int]" = tuple(cfg.new_size)
+        self.new_size: "tuple[int]" = tuple(cfg.dataset_args.transforms.new_size)
         self.df: "pd.DataFrame" = df
         self.tomo_list: "list[str]" = sorted(self.df.tomo_id.unique().tolist())
 
@@ -85,7 +85,7 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
             )
 
         if self.mode == "train":
-            self.sub_epochs: "int" = cfg.train_sub_epochs
+            self.sub_epochs: "int" = cfg.dataset_args.train.sub_epochs
             self.len = len(self.tomo_list) * self.sub_epochs
         else:
             self.sub_epochs = 1
@@ -162,9 +162,14 @@ class BYUCustomDataset(Dataset):  # type: ignore[misc]
         Returns:
             torch.Tensor: Downsampled volume.Ò
         """
+        mode: "str" = self.cfg.dataset_args.transforms.reduce_mode
+        align_corners: "str" = self.cfg.dataset_args.transforms.reduce_align_corners
         input_volume = volume.unsqueeze(dim=0).unsqueeze(dim=0)
         output: "torch.Tensor" = F.interpolate(
-            input_volume, size=self.new_size, mode="nearest"
+            input_volume.float(),
+            size=self.new_size,
+            mode=mode,
+            align_corners=align_corners,
         ).squeeze()
         return output
 
