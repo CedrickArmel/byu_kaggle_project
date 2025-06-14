@@ -33,6 +33,13 @@ import torch.optim as optim
 from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.profilers import Profiler, PyTorchProfiler, XLAProfiler
 from omegaconf import DictConfig
+from torch.nn.init import (
+    calculate_gain,
+    kaiming_normal_,
+    kaiming_uniform_,
+    xavier_normal_,
+    xavier_uniform_,
+)
 from torch.optim.lr_scheduler import (
     CosineAnnealingLR,
     CosineAnnealingWarmRestarts,
@@ -79,26 +86,8 @@ def create_milestones(steps: "int", m: "int") -> "list[int]":
 
 
 def get_callbacks(cfg: "DictConfig") -> "tuple[Callback, ...]":
-    chckpt_cb = ModelCheckpoint(
-        filename=cfg.filename,
-        monitor=cfg.monitor,
-        verbose=False,
-        save_last=cfg.save_last,
-        save_top_k=cfg.save_top_k,
-        save_weights_only=cfg.save_weights_only,
-        mode=cfg.mode,
-        auto_insert_metric_name=cfg.auto_insert_metric_name,
-        every_n_train_steps=cfg.every_n_train_steps,
-        train_time_interval=cfg.train_time_interval,
-        every_n_epochs=cfg.every_n_epochs,
-        save_on_train_epoch_end=cfg.save_on_train_epoch_end,
-        enable_version_counter=cfg.enable_version_counter,
-    )
-    lr_cb = LearningRateMonitor(
-        logging_interval=cfg.logging_interval,
-        log_momentum=cfg.log_momentum,
-        log_weight_decay=cfg.log_weight_decay,
-    )
+    chckpt_cb = ModelCheckpoint(**cfg.callbacks_args.checkpoint)
+    lr_cb = LearningRateMonitor(**cfg.callbacks_args.lr_monitor)
     return chckpt_cb, lr_cb
 
 
@@ -167,21 +156,13 @@ def get_data_loader(
     """
     g = get_seeded_generator(cfg)
     dataset = BYUCustomDataset(cfg, df=df, mode=mode)
+    args = cfg.dataloader_args.train if mode == "train" else cfg.dataloader_args.eval
     loader = DataLoader(
         dataset=dataset,
-        batch_size=cfg.batch_size if mode == "train" else cfg.val_batch_size,
         collate_fn=collate_fn,
         worker_init_fn=seed_worker,
-        num_workers=cfg.num_workers if mode == "train" else cfg.val_num_workers,
-        shuffle=cfg.shuffle if mode == "train" else cfg.val_shuffle,
-        drop_last=cfg.drop_last if mode == "train" else cfg.val_drop_last,
-        persistent_workers=(
-            cfg.persistent_workers if mode == "train" else cfg.val_persistent_workers
-        ),
-        prefetch_factor=(
-            cfg.prefetch_factor if mode == "train" else cfg.val_prefetch_factor
-        ),
         generator=g,
+        **args,
     )
     return loader
 
@@ -309,6 +290,21 @@ def get_scheduler(
     else:
         sequential = scheduler
     return sequential
+
+
+def initialize_weights(cfg: "DictConfig", module: "torch.nn.Module") -> "None":
+    """Applies to a model to init its params"""
+    if isinstance(module, torch.nn.Linear):
+        gain = calculate_gain(nonlinearity=cfg.init_fn_args.nonlinearity)
+        if cfg.ws_init_dist == "normal":
+            xavier_normal_(tensor=module.weight, gain=gain)
+        elif cfg.ws_init_dist == "uniform":
+            xavier_uniform_(tensor=module.weight, gain=gain)
+    elif isinstance(module, (torch.nn.Conv2d, torch.nn.Conv3d)):
+        if cfg.ws_init_dist == "normal":
+            kaiming_normal_(tensor=module.weight, **cfg.init_fn_args)
+        elif cfg.ws_init_dist == "uniform":
+            kaiming_uniform_(tensor=module.weight, **cfg.init_fn_args)
 
 
 def seed_worker(worker_id):

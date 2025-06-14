@@ -1,38 +1,58 @@
 # Callbacks
-filename: "{epoch}-{step}-{val_loss:.2f}-{fbeta1:.2f}-{fbeta2:.2f}"
-monitor: val_dice_loss
-save_last: true
-save_top_k: 3
-mode: min
-auto_insert_metric_name: true
-save_weights_only: false
-every_n_train_steps: 24
-train_time_interval: null
-every_n_epochs: "${eval: None if not ${every_n_train_steps} and not ${train_time_interval} else None}"
-save_on_train_epoch_end: false
-enable_version_counter: false
-logging_interval: step
-log_momentum: true
-log_weight_decay: true
+
+callbacks_args:
+  checkpoint:
+    filename: "{epoch}-{step}-{val_loss:.2f}-{fbeta1:.2f}-{fbeta2:.2f}"
+    monitor: train_loss
+    verbose: false
+    save_last: true
+    save_top_k: 3
+    mode: min
+    auto_insert_metric_name: true
+    save_weights_only: false
+    every_n_train_steps: 0  # x to deactivate
+    train_time_interval: null
+    every_n_epochs: "${eval: 1 if not ${callbacks_args.checkpoint.every_n_train_steps} and not ${callbacks_args.checkpoint.train_time_interval} else None}"
+    save_on_train_epoch_end: false
+    enable_version_counter: false
+  lr_monitor:
+    logging_interval: step
+    log_momentum: true
+    log_weight_decay: true
+
 
 # Dataset/DataLoader
-batch_size: 4
-val_batch_size: 1
-drop_last: true
-val_drop_last: true
-pin_memory: false
-val_pin_memory: false
-test_pin_memory: false
-num_workers: 2  # TODO: 4 workers and increase prefetch_factor
-val_num_workers: 2
-shuffle: true
-val_shuffle: false
-train_sub_epochs: 1
-val_sub_epochs: 1
-prefetch_factor: 8
-val_prefetch_factor: 4
-persistent_workers: true
-val_persistent_workers: false
+dataset_args:
+  transforms:
+    gamma: 2
+    new_size: [288, 480, 480]
+    roi_size: [96, 160, 160]
+    batch_size: 1
+    ratios: [0, 1]
+    reduce_mode: "nearest-exact"
+    reduce_align_corners: null
+  train:
+    sub_epochs: 1
+  eval:
+    sub_epochs: 1
+
+dataloader_args:
+  train:
+    batch_size: 1
+    num_workers: 2
+    shuffle: true
+    drop_last: true
+    persistent_workers: false
+    prefetch_factor: 2
+    pin_memory: false
+  eval:
+    batch_size: 1
+    num_workers: 2
+    shuffle: false
+    drop_last: true
+    persistent_workers: false
+    prefetch_factor: 2
+    pin_memory: false
 
 # Metrics
 dt_multiplier: 1.0
@@ -40,24 +60,41 @@ max_th: 1.0
 motor_radius: 500
 score_beta: 2.0
 
+
 # Model
-backbone: resnet50
+backbone: resnet34
 backbone_args:
-  spatial_dims: "${spatial_dims}"
-  in_channels: "${in_channels}"
-  out_channels: "${n_classes}"
+  spatial_dims: 3
+  in_channels: 1
+  out_channels: 2  # 2 classes: background and motor
   backbone: "${backbone}"
-  pretrained: "${pretrained}"
-class_weights: [1, 256]
-in_channels: 1
+  pretrained: true
+  upsample: "deconv"
+  decoder_channels: [256, 128]
+  skip_connect: 4
+freeze_encoder: true
+deep_supervision: true
 mixup_p: 0.0
-mixup_beta: 1.0
-n_classes: 1
-pretrained: true
-spatial_dims: 3
+mixup_beta: 5.0
+cut_beta: 5.0
+cutmix_p: 0.0
+cut_dims: [-2, -1]
 virt_sub_batch_size: -1
 virt_eval_sub_batch_size: 4
-lvl_weights: [0, 0, 0, 1]
+loss_contributions: [1, 1, 1] # [avg_loss, max_loss, dice_loss]
+weighted_loss: false
+smoothing: 0.0
+
+# Metrics
+byu_metric:
+  compute_on_cpu: true
+  dist_sync_on_step: false
+  process_group: null
+  dist_sync_fn: null
+  distributed_available_fn: null
+  sync_on_compute: true
+  compute_with_cache: true
+  dist_reduce_fx: "cat"
 
 # Metrics
 byu_metric:
@@ -73,27 +110,49 @@ byu_metric:
 # Optimizer
 lr: 0.1
 optimizer: SGD
-sgd_momentum: 0.9
-sgd_nesterov: true
+sgd_momentum: 0.
+sgd_nesterov: false
 weight_decay: 0.0
 
+
 # Optmization
-dice_focal_args:
+loss_args:
   include_background: true
   to_onehot_y: true
-  sigmoid: false
-  softmax: true
-  other_act: null
-  squared_pred: false
-  jaccard: false
-  reduction: mean
-  smooth_nr: 1e-10
-  smooth_dr: 1e-10
-  batch: false
-  gamma: 2.0
-  lambda_dice: 1.0
-  lambda_focal: 1.0
+  gamma: 2.
   alpha: null
+  weight: [1, 5e3]
+  reduction: mean
+  use_softmax: true
+
+max_loss_args:
+  include_background: true
+  to_onehot_y: true
+  gamma: 2.
+  alpha: null
+  weight: [1, 75]
+  reduction: mean
+  use_softmax: true
+
+max_loss_pooling_args:
+  kernel_size: 4
+  stride: 4
+  padding: 0
+  dilation: 1
+
+avg_loss_args:
+  include_background: true
+  to_onehot_y: true
+  gamma: 2.
+  alpha: null
+  weight: [1, 6e2]
+  reduction: mean
+  use_softmax: true
+
+avg_loss_pooling_args:
+  kernel_size: 2
+  stride: 2
+  padding: 0
 
 dice_args:
   include_background: true
@@ -103,22 +162,30 @@ dice_args:
   other_act: null
   squared_pred: false
   jaccard: false
-  reduction: mean
+  reduction: none
   smooth_nr: 1e-10
   smooth_dr: 1e-10
   batch: false
   weight: null
 
+ws_init_dist: normal
+init_fn_args:
+  a: 0.1
+  mode: fan_out
+  nonlinearity: leaky_relu
+
 
 # Paths
 data_folder: "/kaggle/input/byu-locating-bacterial-flagellar-motors-2025"
-df_path: "/kaggle/input/drx75c-byu-ds01-folded-tomograms/byu_folded_tomograms_seed57.csv"
+df_path: "/kaggle/input/drx75c-byu-ds01-folded-tomograms/byu_folded_non_empty_tomograms_seed57.csv"
 output_dir: "/kaggle/working"
+
 
 # Profiler
 profiler_port: 9001
 emit_nvtx: true
 prof_filename: prof_filename.txt
+
 
 # Scheduler
 end_lambda: 1e-3
@@ -142,6 +209,7 @@ linear_args:
 
 # Clipping
 grad_norm_type: 2
+
 
 # Trainer
 accumulate_grad_batches: 1
@@ -187,6 +255,7 @@ deterministic: "warn"
 # Fit
 ckpt_path: null
 
+
 # Training
 best_th: 0.5
 epochs_step: null
@@ -202,8 +271,8 @@ overfit_tomos:
   - "tomo_183270"
   - "tomo_ae347a"
   - "tomo_1ab322"
-
 seed: 4294967295
+
 
 # Post-Processing
 nms_radius: 16
@@ -212,11 +281,3 @@ up_interp_mode: "nearest-exact"
 up_align_corners: null
 down_interp_mode: "nearest-exact"
 down_align_corners: null
-
-
-# Transforms
-gamma: 2
-new_size: [288, 480, 480]
-roi_size: [96, 96, 96]
-sub_batch_size: 2
-ratios: [1, 1]

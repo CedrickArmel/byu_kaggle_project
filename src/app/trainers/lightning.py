@@ -20,7 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import lightning as L
+import lightning.pytorch as L
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.loggers import Logger
 from lightning.pytorch.profilers import Profiler

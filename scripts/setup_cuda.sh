@@ -18,6 +18,8 @@ for var in MASTER_ADDR MASTER_PORT TPU_PROCESS_ADDRESSES XRT_TPU_CONFIG; do
     unset $var
 done
 
+export HYDRA_FULL_ERROR=1
+
 # Set environment variables for GPU
 export CUDA_HOME="/usr/local/cuda"
 export CUDA_VERSION="12.5.1"
@@ -75,7 +77,7 @@ eval "$(pyenv virtualenv-init -)"
 export PATH="/root/.local/bin:$PATH"
 
 EOF
-echo "✅ TPU environment setup complete. Reload your shell with: source ~/.bashrc"
+echo "✅ GPU environment setup complete. Reload your shell with: source ~/.bashrc"
 
 echo "🔄 Reloading shell..."
 source ~/.bashrc
