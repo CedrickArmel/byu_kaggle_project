@@ -128,7 +128,6 @@ def post_process_pipeline(
         align_corners=cfg.up_align_corners,
     )
 
-
     out_size = get_output_size(img, locations, roi_size, device)
     rec_img = reconstruct(
         img=img,

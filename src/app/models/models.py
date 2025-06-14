@@ -328,7 +328,7 @@ class CutmixSimple(nn.Module):
 
         return X, Y
 
- 
+
 class Net(nn.Module):  # type: ignore[misc]
     """Adapted from ChristofHenkel/kaggle-cryoet-1st-place-segmentation/models
     to support sub_batches and avoid OOM errors.
