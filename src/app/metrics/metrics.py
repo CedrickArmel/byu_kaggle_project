@@ -71,6 +71,7 @@ class BYUFbeta(Metric):
         return dict(
             fbeta1=best_fbeta1, thd1=fb1_thd, fbeta2=best_fbeta2, thd2=fb2_thd)
 
+
     def score_fn(
         self, t: "float", preds: "torch.Tensor", targets: "torch.Tensor"
     ) -> "tuple[float,...]":

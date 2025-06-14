@@ -49,6 +49,7 @@ if __name__ == "__main__":
 
     model = LNet(cfg)
     # model.load_state_dict(state["state_dict"])
+
     tr_it = iter(val_loader)
     counter = 0
     for batch in range(len(val_loader)):

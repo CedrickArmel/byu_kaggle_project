@@ -1,4 +1,5 @@
 # Callbacks
+
 callbacks_args:
   checkpoint:
     filename: "{epoch}-{step}-{val_loss:.2f}-{fbeta1:.2f}-{fbeta2:.2f}"
@@ -53,7 +54,6 @@ dataloader_args:
     prefetch_factor: 2
     pin_memory: false
 
-
 # Metrics
 dt_multiplier: 1.0
 max_th: 1.0
@@ -84,6 +84,17 @@ virt_eval_sub_batch_size: 4
 loss_contributions: [1, 1, 1] # [avg_loss, max_loss, dice_loss]
 weighted_loss: false
 smoothing: 0.0
+
+# Metrics
+byu_metric:
+  compute_on_cpu: true
+  dist_sync_on_step: false
+  process_group: null
+  dist_sync_fn: null
+  distributed_available_fn: null
+  sync_on_compute: true
+  compute_with_cache: true
+  dist_reduce_fx: "cat"
 
 # Metrics
 byu_metric:
@@ -195,7 +206,6 @@ linear_args:
   start_factor: 1e-05
   end_factor: 1.0
   total_iters: "${warmup}"
-
 
 # Clipping
 grad_norm_type: 2

@@ -21,6 +21,7 @@
 # SOFTWARE.
 
 import os
+from collections import Counter
 from typing import Any
 
 import lightning.pytorch as L
@@ -217,7 +218,7 @@ class LNet(L.LightningModule):
                 torch.cat([g.detach().view(-1) for g in grads]),
                 p=self.cfg.grad_norm_type,
             )
-
+              
         log_dict: "dict[str, torch.Tensor]" = dict(
             grad_norm=total_norm_before, clip_grad_norm=total_norm_after
         )

@@ -328,7 +328,7 @@ class CutmixSimple(nn.Module):
 
         return X, Y
 
-
+ 
 class Net(nn.Module):  # type: ignore[misc]
     """Adapted from ChristofHenkel/kaggle-cryoet-1st-place-segmentation/models
     to support sub_batches and avoid OOM errors.
@@ -416,6 +416,7 @@ class Net(nn.Module):  # type: ignore[misc]
                 if has_target:
                     loss = self.loss_fn(logits, yss)
 
+        outs = torch.cat(all_outs, dim=0)
         if has_target:
             outputs["loss"] = loss
             outputs["dice"] = self.dice_fn(logits, yss).squeeze().mean(dim=0)
