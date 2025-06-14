@@ -33,7 +33,13 @@ import torch.optim as optim
 from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.profilers import Profiler, PyTorchProfiler, XLAProfiler
 from omegaconf import DictConfig
-from torch.optim.lr_scheduler import SequentialLR, LinearLR, MultiStepLR, CosineAnnealingLR, CosineAnnealingWarmRestarts
+from torch.optim.lr_scheduler import (
+    CosineAnnealingLR,
+    CosineAnnealingWarmRestarts,
+    LinearLR,
+    MultiStepLR,
+    SequentialLR,
+)
 from torch.utils.data import DataLoader
 
 from app.data import BYUCustomDataset
@@ -64,12 +70,13 @@ def collate_fn(batch: "list[dict[str, Any]]") -> "dict[str, Any]":
 
 
 def create_milestones(steps: "int", m: "int") -> "list[int]":
-        """returns a list of milestones for the given number of steps and m."""
-        g = int(steps // m)
-        milestones = []
-        for i in range(1, m + 1):
-            milestones += [i] * g
-        return milestones
+    """returns a list of milestones for the given number of steps and m."""
+    g = int(steps // m)
+    milestones = []
+    for i in range(1, m + 1):
+        milestones += [i] * g
+    return milestones
+
 
 def get_callbacks(cfg: "DictConfig") -> "tuple[Callback, ...]":
     chckpt_cb = ModelCheckpoint(
@@ -108,7 +115,7 @@ def get_data(cfg: "DictConfig", mode: "str" = "fit") -> "tuple[pd.DataFrame,...]
     if mode not in ["fit", "test"]:
         raise ValueError("mode argument must be one of train, validation or test!")
     if cfg.manual_overfit:
-        overfit_samples = cfg.overfit_tomos[:cfg.batch_size]
+        overfit_samples = cfg.overfit_tomos[: cfg.batch_size]
         df = df = pd.read_csv(cfg.df_path)
         train_df = df[df.tomo_id.isin(overfit_samples)]
         val_df = df[df.fold == 0]
@@ -168,8 +175,12 @@ def get_data_loader(
         num_workers=cfg.num_workers if mode == "train" else cfg.val_num_workers,
         shuffle=cfg.shuffle if mode == "train" else cfg.val_shuffle,
         drop_last=cfg.drop_last if mode == "train" else cfg.val_drop_last,
-        persistent_workers=cfg.persistent_workers if mode == "train" else cfg.val_persistent_workers,
-        prefetch_factor=cfg.prefetch_factor if mode == "train" else cfg.val_prefetch_factor,
+        persistent_workers=(
+            cfg.persistent_workers if mode == "train" else cfg.val_persistent_workers
+        ),
+        prefetch_factor=(
+            cfg.prefetch_factor if mode == "train" else cfg.val_prefetch_factor
+        ),
         generator=g,
     )
     return loader
@@ -278,15 +289,23 @@ def get_scheduler(
     if cfg.schedule == "multistep":
         steps: "int" = training_steps - cfg.warmup
         milestones = range(1, steps, (steps // cfg.milestones))
-        scheduler = MultiStepLR(optimizer=optimizer, milestones=milestones, gamma=cfg.end_lambda)
+        scheduler = MultiStepLR(
+            optimizer=optimizer, milestones=milestones, gamma=cfg.end_lambda
+        )
     elif cfg.schedule == "cosine":
         scheduler = CosineAnnealingLR(optimizer=optimizer, **cfg.cosine_args)
     elif cfg.schedule == "cosine_wr":
-        scheduler = CosineAnnealingWarmRestarts(optimizer=optimizer, **cfg.cosine_wr_args)
-    
+        scheduler = CosineAnnealingWarmRestarts(
+            optimizer=optimizer, **cfg.cosine_wr_args
+        )
+
     if cfg.warmup > 0:
         warmup_scheduler = LinearLR(optimizer=optimizer, **cfg.linear_args)
-        sequential = SequentialLR(optimizer=optimizer, schedulers=[warmup_scheduler, scheduler], milestones=[cfg.warmup])
+        sequential = SequentialLR(
+            optimizer=optimizer,
+            schedulers=[warmup_scheduler, scheduler],
+            milestones=[cfg.warmup],
+        )
     else:
         sequential = scheduler
     return sequential

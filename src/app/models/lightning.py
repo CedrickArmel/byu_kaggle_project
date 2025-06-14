@@ -47,7 +47,7 @@ class LNet(L.LightningModule):
         self.cfg = cfg
         self.model = Net(cfg)
         self.validation_step_outputs: "list[torch.Tensor]" = []
-    
+
     def on_fit_start(self) -> "None":
         """Called at the very beginning of fit."""
         if torch.distributed.is_initialized():
@@ -59,7 +59,7 @@ class LNet(L.LightningModule):
                     compute_on_cpu=self.cfg.byu_metric.compute_on_cpu,
                     dist_sync_on_step=self.cfg.byu_metric.dist_sync_on_step,
                     sync_on_compute=self.cfg.byu_metric.sync_on_compute,
-            )
+                )
         else:
             self.score_metric = BYUFbeta(
                 self.cfg,
@@ -73,26 +73,28 @@ class LNet(L.LightningModule):
         if stage == "fit" and self.cfg.pretrained:
             for param in self.model.backbone.encoder.parameters():
                 param.requires_grad = False
-        self.cfg.batch_size *= (self.trainer.world_size * self.cfg.sub_batch_size)
+        self.cfg.batch_size *= self.trainer.world_size * self.cfg.sub_batch_size
         self.cfg.val_batch_size *= self.trainer.world_size
         self.cfg.lr *= self.trainer.world_size
         stepping_batches = self.trainer.estimated_stepping_batches
-        self.training_steps = stepping_batches * self.cfg.max_epochs * self.trainer.world_size
+        self.training_steps = (
+            stepping_batches * self.cfg.max_epochs * self.trainer.world_size
+        )
 
     def forward(self, batch: "dict[str, Any]") -> "torch.Tensor":
         return self.model(batch)
-    
+
     def configure_optimizers(self) -> "dict[str, Any] | Optimizer":
         """Return the optimizer and an optionnal lr_scheduler"""
         optimizer: "Optimizer" = get_optimizer(self.cfg, self.model)
-        scheduler = get_scheduler(cfg=self.cfg, optimizer=optimizer, training_steps=self.training_steps)
-        return (
-            dict(
-                optimizer=optimizer,
-                lr_scheduler=dict(
-                    scheduler=scheduler, interval="step", frequency=1, name="lr"
-                ),
-            )
+        scheduler = get_scheduler(
+            cfg=self.cfg, optimizer=optimizer, training_steps=self.training_steps
+        )
+        return dict(
+            optimizer=optimizer,
+            lr_scheduler=dict(
+                scheduler=scheduler, interval="step", frequency=1, name="lr"
+            ),
         )
 
     def training_step(
@@ -102,14 +104,15 @@ class LNet(L.LightningModule):
         loss = output_dict["loss"]
         log_dict = dict(train_loss=loss, train_dice_loss=output_dict["dice"])
         self.log_dict(
-            log_dict, 
+            log_dict,
             on_step=True,
             on_epoch=True,
             logger=True,
             prog_bar=True,
-            sync_dist=True)
+            sync_dist=True,
+        )
         return loss
-    
+
     def on_train_batch_end(self, outputs, batch, batch_idx):
         params = [p for p in self.parameters() if p.grad is not None]
         if len(params) == 0:
@@ -117,7 +120,8 @@ class LNet(L.LightningModule):
         else:
             total_norm = torch.norm(
                 torch.cat([p.detach().view(-1) for p in params]),
-                p=self.cfg.grad_norm_type)
+                p=self.cfg.grad_norm_type,
+            )
         self.log(
             "weight_norm",
             total_norm,
@@ -125,7 +129,7 @@ class LNet(L.LightningModule):
             on_epoch=True,
             logger=True,
             prog_bar=False,
-            sync_dist=True
+            sync_dist=True,
         )
 
     def validation_step(
@@ -145,7 +149,8 @@ class LNet(L.LightningModule):
             on_epoch=True,
             logger=True,
             prog_bar=True,
-            sync_dist=True)
+            sync_dist=True,
+        )
         return preds
 
     def on_validation_epoch_end(self) -> "None":
@@ -188,7 +193,8 @@ class LNet(L.LightningModule):
         else:
             total_norm_before = total_norm = torch.norm(
                 torch.cat([g.detach().view(-1) for g in grads]),
-                p=self.cfg.grad_norm_type)
+                p=self.cfg.grad_norm_type,
+            )
 
         self.clip_gradients(
             optimizer,
@@ -201,8 +207,9 @@ class LNet(L.LightningModule):
         else:
             total_norm_after = torch.norm(
                 torch.cat([g.detach().view(-1) for g in grads]),
-                p=self.cfg.grad_norm_type)
-            
+                p=self.cfg.grad_norm_type,
+            )
+
         log_dict = dict(grad_norm=total_norm_before, clip_grad_norm=total_norm_after)
 
         self.log_dict(
@@ -211,8 +218,10 @@ class LNet(L.LightningModule):
             on_epoch=True,
             logger=True,
             prog_bar=False,
-            sync_dist=True
+            sync_dist=True,
         )
 
     def on_save_checkpoint(self, checkpoint):
-        checkpoint["state_dict"]["model.loss_fn.focal.class_weight"] = checkpoint["state_dict"]["model.loss_fn.focal.class_weight"].squeeze()
+        checkpoint["state_dict"]["model.loss_fn.focal.class_weight"] = checkpoint[
+            "state_dict"
+        ]["model.loss_fn.focal.class_weight"].squeeze()
