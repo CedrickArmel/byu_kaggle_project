@@ -41,32 +41,33 @@ if __name__ == "__main__":
     train_loader = get_data_loader(cfg, train_df, mode="train")
     val_loader = get_data_loader(cfg, val_df, mode="validation")
 
-    state = torch.load(
-        "/kaggle/working/resnet10/version_33/checkpoints/epoch=4-step=168-val_loss=0.85-fbeta1=0.00-fbeta2=0.82.ckpt",
-        map_location="cpu",
-    )
-    cfg.virt_eval_sub_batch_size = 8
+    # state = torch.load(
+    #    "/kaggle/working/resnet10/seed_4294967295/fold3/version_0/checkpoints/last.ckpt",
+    #    map_location="cpu",
+    # )
+    cfg.virt_eval_sub_batch_size = 4
 
     model = LNet(cfg)
-    model.load_state_dict(state["state_dict"])
+    # model.load_state_dict(state["state_dict"])
     tr_it = iter(val_loader)
     counter = 0
     for batch in range(len(val_loader)):
         batch = next(tr_it)
-        if batch["id"][0] not in [16, 38, 200, 422]:
+        if batch["id"][0] == 212:
             continue
         print(batch["id"][0])
-        b_cuda = {
-            k: v.to("cuda:0") if isinstance(v, torch.Tensor) else v
-            for k, v in batch.items()
-        }
-        model.to("cuda:0")
+        # b_cuda = {
+        #    k: v.to("cuda:0") if isinstance(v, torch.Tensor) else v
+        #    for k, v in batch.items()
+        # }
+        # model.to("cuda:0")
         model.eval()
         with torch.no_grad():
-            output = model(b_cuda)
+            output = model(batch)
         logits = output["logits"]
-        print(output["dice"])
+        print(output["loss"])
         logits = logits.cpu().numpy()
+        print(logits.shape)
         torch.save(logits, f"/kaggle/working/logits{batch['id'][0]}.pt")
         counter += 1
         if counter == 1:

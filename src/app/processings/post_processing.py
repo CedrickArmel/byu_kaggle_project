@@ -108,8 +108,10 @@ def post_process_pipeline(
         torch.Tensor: The final coordinates and confidence scores.
     """
     device = net_output["logits"].device
-    new_size = torch.tensor(cfg.new_size, device=net_output["logits"].device)
-    roi_size = torch.tensor(cfg.roi_size, device=net_output["logits"].device)
+    new_size: "list[int] | torch.Tensor" = cfg.dataset_args.transforms.new_size
+    roi_size: "list[int] | torch.Tensor" = cfg.dataset_args.transforms.roi_size
+    new_size = torch.tensor(new_size, device=net_output["logits"].device)
+    roi_size = torch.tensor(roi_size, device=net_output["logits"].device)
 
     img: "torch.Tensor" = net_output["logits"].detach()
 
@@ -118,6 +120,13 @@ def post_process_pipeline(
     tomo_ids: "torch.Tensor" = torch.tensor(net_output["id"], device=device)
 
     # TODO: in future interpolate only if the size is not equal to roi_size there
+
+    img = F.interpolate(
+        img,
+        size=roi_size.tolist(),
+        mode=cfg.up_interp_mode,
+        align_corners=cfg.up_align_corners,
+    )
 
     out_size = get_output_size(img, locations, roi_size, device)
     rec_img = reconstruct(

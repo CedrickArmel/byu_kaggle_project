@@ -20,28 +20,79 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import random
+from collections.abc import Sequence
 from typing import Any
 
-import numpy as np
 import torch
 import torch.nn.functional as F
-from monai.losses import DiceFocalLoss, DiceLoss
-from monai.networks.nets.flexible_unet import (
-    FLEXUNET_BACKBONE,
-    SegmentationHead,
-    UNetDecoder,
-)
+from monai.losses import DiceLoss
+from monai.networks.nets.basic_unet import UpCat
+from monai.networks.nets.flexible_unet import FLEXUNET_BACKBONE, SegmentationHead
 from omegaconf import DictConfig
 from torch import nn
 from torch.distributions import Beta
 
+from app.losses import FocalLoss
 
-class PatchedUNetDecoder(UNetDecoder):  # type: ignore[misc]
+
+class PatchedUNetDecoder(nn.Module):  # type: ignore[misc]
     """add functionality to output all feature maps"""
 
-    def forward(
-        self, features: "list[torch.Tensor]", skip_connect: "int" = 4
-    ) -> "list[torch.Tensor]":
+    def __init__(
+        self,
+        spatial_dims: int,
+        encoder_channels: Sequence[int],
+        decoder_channels: Sequence[int],
+        act: str | tuple,
+        norm: str | tuple,
+        dropout: float | tuple,
+        bias: bool,
+        upsample: str,
+        pre_conv: str | None,
+        interp_mode: str,
+        align_corners: bool | None,
+        is_pad: bool,
+        skip_connect: int = 4,
+    ):
+        super().__init__()
+        if len(encoder_channels) < 2:
+            raise ValueError(
+                "the length of `encoder_channels` should be no less than 2."
+            )
+        if len(decoder_channels) < 1:
+            raise ValueError("`len(decoder_channels)` should be no less than 1 `.")
+        in_channels = [encoder_channels[-1]] + list(decoder_channels[:-1])
+        skip_channels = list(encoder_channels[1:-1][::-1]) + [0]
+        halves = [True] * (len(skip_channels) - 1)
+        halves.append(False)
+        blocks = []
+
+        for in_chn, skip_chn, out_chn, halve in zip(
+            in_channels, skip_channels, decoder_channels, halves
+        ):
+            blocks.append(
+                UpCat(
+                    spatial_dims=spatial_dims,
+                    in_chns=in_chn,
+                    cat_chns=skip_chn,
+                    out_chns=out_chn,
+                    act=act,
+                    norm=norm,
+                    dropout=dropout,
+                    bias=bias,
+                    upsample=upsample,
+                    pre_conv=pre_conv,
+                    interp_mode=interp_mode,
+                    align_corners=align_corners,
+                    halves=halve,
+                    is_pad=is_pad,
+                )
+            )
+        self.blocks = nn.ModuleList(blocks)
+        self.skip_connect = min(skip_connect, len(self.blocks))
+
+    def forward(self, features: "list[torch.Tensor]") -> "list[torch.Tensor]":
         skips = features[:-1][::-1]
         features = features[1:][::-1]
 
@@ -49,7 +100,7 @@ class PatchedUNetDecoder(UNetDecoder):  # type: ignore[misc]
         x = features[0]
         out += [x]
         for i, block in enumerate(self.blocks):
-            if i < skip_connect:
+            if i < self.skip_connect:
                 skip = skips[i]
             else:
                 skip = None
@@ -76,13 +127,17 @@ class FlexibleUNet(nn.Module):  # type: ignore[misc]
             "batch",
             {"eps": 1e-3, "momentum": 0.1},
         ),
-        act: str | tuple[str, dict[str, Any]] = ("relu", {"inplace": True}),
+        act: str | tuple[str, dict[str, Any]] = (
+            "leakyrelu",
+            {"negative_slope": 0.1, "inplace": True},
+        ),
         dropout: float | tuple[str, dict[str, Any]] = 0.0,
         decoder_bias: bool = False,
         upsample: str = "nontrainable",
         pre_conv: str = "default",
         interp_mode: str = "nearest",
         is_pad: bool = True,
+        skip_connect: int = 4,
     ) -> None:
         """
         A flexible implement of UNet, in which the backbone/encoder can be replaced with
@@ -131,9 +186,11 @@ class FlexibleUNet(nn.Module):  # type: ignore[misc]
             raise ValueError("spatial_dims can only be 2 or 3.")
 
         encoder = FLEXUNET_BACKBONE.register_dict[backbone]
+        encoder_parameters = encoder["parameter"]
+        encoder_feature_num = encoder["feature_number"]
+
         self.backbone = backbone
         self.spatial_dims = spatial_dims
-        encoder_parameters = encoder["parameter"]
 
         if not (
             ("spatial_dims" in encoder_parameters)
@@ -144,17 +201,12 @@ class FlexibleUNet(nn.Module):  # type: ignore[misc]
                 "The backbone init method must have spatial_dims, in_channels and pretrained parameters."
             )
 
-        encoder_feature_num = encoder["feature_number"]
-
         if encoder_feature_num > 5:
             raise ValueError(
                 "Flexible unet can only accept no more than 5 encoder feature maps."
             )
 
         decoder_channels = decoder_channels[:encoder_feature_num]
-
-        self.skip_connect = encoder_feature_num - 1
-
         encoder_parameters.update(
             {
                 "spatial_dims": spatial_dims,
@@ -164,8 +216,8 @@ class FlexibleUNet(nn.Module):  # type: ignore[misc]
         )
         encoder_channels = tuple([in_channels] + list(encoder["feature_channel"]))
         encoder_type = encoder["type"]
-        self.encoder = encoder_type(**encoder_parameters)
 
+        self.encoder = encoder_type(**encoder_parameters)
         self.decoder = PatchedUNetDecoder(
             spatial_dims=spatial_dims,
             encoder_channels=encoder_channels,
@@ -179,16 +231,23 @@ class FlexibleUNet(nn.Module):  # type: ignore[misc]
             pre_conv=pre_conv,
             align_corners=None,
             is_pad=is_pad,
-        )
-        self.segmentation_heads = SegmentationHead(
-            spatial_dims=spatial_dims,
-            in_channels=decoder_channels[-1],
-            out_channels=out_channels + 1,
-            kernel_size=3,
-            act=None,
+            skip_connect=skip_connect,
         )
 
-    def forward(self, inputs: torch.Tensor) -> "list[torch.Tensor]":
+        self.segmentation_heads = nn.ModuleList(
+            [
+                SegmentationHead(
+                    spatial_dims=spatial_dims,
+                    in_channels=decoder_channel,
+                    out_channels=out_channels,
+                    kernel_size=3,
+                    act=None,
+                )
+                for decoder_channel in decoder_channels
+            ]
+        )
+
+    def forward(self, inputs: "torch.Tensor") -> "list[torch.Tensor]":
         """
         Performs a forward pass through the model.
         Args:
@@ -197,32 +256,17 @@ class FlexibleUNet(nn.Module):  # type: ignore[misc]
             list[torch.Tensor]: A list of tensors representing the segmented
             feature maps produced by the segmentation heads.
         """
-        x = inputs
+        x: "torch.Tensor" = inputs
         enc_out = self.encoder(x)
-        decoder_out = self.decoder(enc_out, self.skip_connect)[-1]
-        x_seg = self.segmentation_heads(decoder_out)  # segment the first feature map
+        decoder_out = self.decoder(enc_out)[1:]
+        x_seg = [
+            self.segmentation_heads[i](decoder_out[i]) for i in range(len(decoder_out))
+        ]
         return x_seg
 
 
-def count_parameters(model: "nn.Module") -> "int":
-    """Count the number of trainable parameters in a model."""
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-
-def human_format(num: "float") -> str:
-    """Convert a number to a human-readable format with SI prefixes."""
-    num = float("{:.3g}".format(num))
-    magnitude = 0
-    while abs(num) >= 1000:
-        magnitude += 1
-        num /= 1000.0
-    return "{}{}".format(
-        "{:f}".format(num).rstrip("0").rstrip("."), ["", "K", "M", "B", "T"][magnitude]
-    )
-
-
 class Mixup(nn.Module):  # type: ignore[misc]
-    """Mixup augmentation for 3D data."""
+    """Mixup augmentation for data."""
 
     def __init__(self, mix_beta: "float", mixadd: "bool" = False) -> None:
         """Initialize the Mixup module."""
@@ -250,6 +294,41 @@ class Mixup(nn.Module):  # type: ignore[misc]
         return X, Y
 
 
+class CutmixSimple(nn.Module):
+    """Simple cutmix augmentation for data."""
+
+    def __init__(self, cut_beta: "float" = 5.0, cut_dims: "tuple" = (-2, -1)):
+        super().__init__()
+        assert all(_ < 0 for _ in cut_dims), "dims must be negatively indexed."
+        self.beta_distribution = Beta(cut_beta, cut_beta)  # beta = 5 = gaussianlike
+        self.dims = cut_dims
+
+    def forward(self, X, Y, Z=None):
+        cut_idx = self.beta_distribution.sample().item()
+
+        perm = torch.randperm(X.size(0))
+        X_perm = X[perm]
+        Y_perm = Y[perm]
+
+        axis = random.choice(self.dims)
+
+        # Get cut idxs
+        cutoff_X = int(cut_idx * X.shape[axis])
+        cutoff_Y = int(cut_idx * Y.shape[axis])
+
+        # Apply cut
+        if axis == -1:
+            X[..., :cutoff_X] = X_perm[..., :cutoff_X]
+            Y[..., :cutoff_Y] = Y_perm[..., :cutoff_Y]
+        elif axis == -2:
+            X[..., :cutoff_X, :] = X_perm[..., :cutoff_X, :]
+            Y[..., :cutoff_Y, :] = Y_perm[..., :cutoff_Y, :]
+        else:
+            raise ValueError("CutmixSimple: Axis not implemented.")
+
+        return X, Y
+
+
 class Net(nn.Module):  # type: ignore[misc]
     """Adapted from ChristofHenkel/kaggle-cryoet-1st-place-segmentation/models
     to support sub_batches and avoid OOM errors.
@@ -260,12 +339,13 @@ class Net(nn.Module):  # type: ignore[misc]
         super(Net, self).__init__()
         self.cfg = cfg
         self.backbone = FlexibleUNet(**cfg.backbone_args)
-        self.mixup = Mixup(cfg.mixup_beta)
-        self.loss_fn = DiceFocalLoss(
-            weight=torch.from_numpy(np.array(cfg.class_weights)),
-            **self.cfg.dice_focal_args,
-        )
-        self.loss_metric = DiceLoss(**self.cfg.dice_args)
+        self.mixup = Mixup(mix_beta=cfg.mixup_beta)
+        self.cutmix = CutmixSimple(cut_beta=cfg.cut_beta, cut_dims=cfg.cut_dims)
+        self.loss_fn = FocalLoss(**self.cfg.loss_args)
+        self.dice_fn = DiceLoss(**self.cfg.dice_args)
+        self.max_loss_fn = FocalLoss(**self.cfg.max_loss_args)
+        self.avg_loss_fn = FocalLoss(**self.cfg.avg_loss_args)
+        self.loss_contributions = torch.tensor(list(self.cfg.loss_contributions))
 
     def forward(self, batch: "dict[str, Any]") -> "dict[str, Any]":
         """Perform a forward pass through the model."""
@@ -274,42 +354,74 @@ class Net(nn.Module):  # type: ignore[misc]
             if self.training
             else self.cfg.virt_eval_sub_batch_size
         )
-
-        if bs == -1:
-            sub_batches = [batch]
-        else:
-            sub_batches = [
-                {key: value[i : i + bs] for key, value in batch.items()}
-                for i in range(0, len(batch["input"]), bs)
-            ]
-
+        full_size = batch["input"].shape[0]
         outputs = {}
         all_outs = []
         all_ys = []
+        has_target = "target" in batch
 
-        has_target = "target" in batch  # Check only once
+        for i in range(0, full_size, bs if bs != -1 else full_size):
+            x: "torch.Tensor " = batch["input"][i : i + bs].float()
+            y: "torch.Tensor | None" = (
+                batch["target"][i : i + bs].float() if has_target else None
+            )
 
-        for b in sub_batches:
-            x = b["input"].to(torch.float32)
-            y = b["target"].to(torch.float32) if has_target else None
-
-            if self.training and has_target and torch.rand(1)[0] < self.cfg.mixup_p:
-                x, y = self.mixup(x, y)
-
-            out = self.backbone(x)
-            all_outs.append(out)
-            if has_target:
-                ys = F.adaptive_max_pool3d(y, out.shape[-3:])
+            if self.training:
+                outs: "list[torch.Tensor]" = self.backbone(x)
+                logits: "torch.Tensor" = outs[-1]
+                all_outs.append(outs)
+                ys: "torch.Tensor" = F.adaptive_max_pool3d(y, logits.shape[-3:])
                 all_ys.append(ys)
 
-        outs = torch.cat(all_outs, dim=0)
+            else:
+                with torch.no_grad():
+                    outs = self.backbone(x)
+                    logits = outs[-1]
+                    all_outs.append(logits)
+                    if has_target:
+                        ys = F.adaptive_max_pool3d(y, logits.shape[-3:])
+                        all_ys.append(ys)
+
+        yss: "torch.Tensor | None" = torch.cat(all_ys, dim=0) if has_target else None
+
+        if self.training:
+            outs = [
+                torch.cat([out[i] for out in all_outs]) for i in range(len(all_outs[0]))
+            ]
+            logits = outs[-1]
+            loss = self.loss_fn(logits, yss)
+
+            loss_contributions: "torch.Tensor" = self.loss_contributions.to(
+                logits.device
+            )
+            loss = loss_contributions[-1] * self.loss_fn(logits, yss)
+            x_aux: "torch.Tensor" = F.max_pool3d(
+                logits, **self.cfg.max_loss_pooling_args
+            )
+            y_aux: "torch.Tensor" = F.max_pool3d(yss, **self.cfg.max_loss_pooling_args)
+            loss += loss_contributions[-2] * self.max_loss_fn(x_aux, y_aux)
+
+            if self.cfg.deep_supervision:
+                x_aux = outs[-2]
+                y_aux = F.avg_pool3d(yss, **self.cfg.avg_loss_pooling_args)
+                loss += loss_contributions[-3] * self.avg_loss_fn(x_aux, y_aux)
+
+            if self.cfg.weighted_loss:
+                loss /= loss_contributions.sum()
+
+        else:
+            with torch.no_grad():
+                # For inference, we concatenate all outputs
+                logits = torch.cat(all_outs, dim=0)
+                if has_target:
+                    loss = self.loss_fn(logits, yss)
+
         if has_target:
-            yss = torch.cat(all_ys, dim=0)
-            outputs["loss"] = self.loss_fn(outs, yss)
-            outputs["dice"] = self.loss_metric(outs, yss)
+            outputs["loss"] = loss
+            outputs["dice"] = self.dice_fn(logits, yss).squeeze().mean(dim=0)
 
         if not self.training:
-            outputs["logits"] = outs
+            outputs["logits"] = logits
             if "location" in batch:
                 outputs["location"] = batch["location"]
             if "scale" in batch:

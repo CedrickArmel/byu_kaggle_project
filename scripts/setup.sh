@@ -17,6 +17,8 @@ for var in MASTER_ADDR MASTER_PORT TPU_PROCESS_ADDRESSES XRT_TPU_CONFIG; do
     unset $var
 done
 
+export HYDRA_FULL_ERROR=1
+
 # Set environment variables for TPU
 export ISTPUVM=1
 export PJRT_DEVICE=TPU
