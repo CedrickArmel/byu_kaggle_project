@@ -25,6 +25,7 @@ from typing import Any
 import numpy as np
 import torch
 import torch.nn.functional as F
+from monai.losses import DiceFocalLoss, DiceLoss
 from monai.networks.nets.flexible_unet import (
     FLEXUNET_BACKBONE,
     SegmentationHead,
@@ -179,18 +180,12 @@ class FlexibleUNet(nn.Module):  # type: ignore[misc]
             align_corners=None,
             is_pad=is_pad,
         )
-        # Instanciate a segmentation head for each feature maps outputed by PatchedUNetDecoder
-        self.segmentation_heads = nn.ModuleList(
-            [
-                SegmentationHead(
-                    spatial_dims=spatial_dims,
-                    in_channels=decoder_channel,
-                    out_channels=out_channels + 1,
-                    kernel_size=3,
-                    act=None,
-                )
-                for decoder_channel in decoder_channels[:-1]
-            ]
+        self.segmentation_heads = SegmentationHead(
+            spatial_dims=spatial_dims,
+            in_channels=decoder_channels[-1],
+            out_channels=out_channels + 1,
+            kernel_size=3,
+            act=None,
         )
 
     def forward(self, inputs: torch.Tensor) -> "list[torch.Tensor]":
@@ -204,10 +199,8 @@ class FlexibleUNet(nn.Module):  # type: ignore[misc]
         """
         x = inputs
         enc_out = self.encoder(x)
-        decoder_out = self.decoder(enc_out, self.skip_connect)[1:-1]
-        x_seg = [
-            self.segmentation_heads[i](decoder_out[i]) for i in range(len(decoder_out))
-        ]  # segment each feature map
+        decoder_out = self.decoder(enc_out, self.skip_connect)[-1]
+        x_seg = self.segmentation_heads(decoder_out)  # segment the first feature map
         return x_seg
 
 
@@ -257,37 +250,6 @@ class Mixup(nn.Module):  # type: ignore[misc]
         return X, Y
 
 
-class DenseCrossEntropy(nn.Module):  # type: ignore[misc]
-    def __init__(self, class_weights: "torch.Tensor | None" = None) -> None:
-        """Initialize the DenseCrossEntropy loss function."""
-        super(DenseCrossEntropy, self).__init__()
-        self.class_weights = class_weights
-
-    def forward(
-        self, x: "torch.Tensor", target: "torch.Tensor"
-    ) -> "tuple[torch.Tensor, torch.Tensor]":
-        x = x.float()
-        target = target.float()
-        logprobs = torch.nn.functional.log_softmax(x, dim=1, dtype=torch.float)
-        loss = -logprobs * target
-        class_losses = loss.mean((0, 2, 3, 4))
-        if self.class_weights is not None:
-            loss = (
-                class_losses * self.class_weights.to(class_losses.device)
-            ).sum()  # / class_weights.sum()
-        else:
-            loss = class_losses.sum()
-        return loss, class_losses
-
-
-def to_ce_target(y: "torch.Tensor") -> "torch.Tensor":
-    """Convert the target to a format suitable for cross-entropy loss."""
-    y_bg = 1 - y.sum(1, keepdim=True).clamp(0, 1)
-    y = torch.cat([y, y_bg], 1)
-    y = y / y.sum(1, keepdim=True)
-    return y
-
-
 class Net(nn.Module):  # type: ignore[misc]
     """Adapted from ChristofHenkel/kaggle-cryoet-1st-place-segmentation/models
     to support sub_batches and avoid OOM errors.
@@ -299,10 +261,11 @@ class Net(nn.Module):  # type: ignore[misc]
         self.cfg = cfg
         self.backbone = FlexibleUNet(**cfg.backbone_args)
         self.mixup = Mixup(cfg.mixup_beta)
-        self.lvl_weights = torch.from_numpy(np.array(cfg.lvl_weights))
-        self.loss_fn = DenseCrossEntropy(
-            class_weights=torch.from_numpy(np.array(cfg.class_weights))
+        self.loss_fn = DiceFocalLoss(
+            weight=torch.from_numpy(np.array(cfg.class_weights)),
+            **self.cfg.dice_focal_args,
         )
+        self.loss_metric = DiceLoss(**self.cfg.dice_args)
 
     def forward(self, batch: "dict[str, Any]") -> "dict[str, Any]":
         """Perform a forward pass through the model."""
@@ -321,8 +284,8 @@ class Net(nn.Module):  # type: ignore[misc]
             ]
 
         outputs = {}
-        all_logits = []
-        all_losses = []
+        all_outs = []
+        all_ys = []
 
         has_target = "target" in batch  # Check only once
 
@@ -334,33 +297,23 @@ class Net(nn.Module):  # type: ignore[misc]
                 x, y = self.mixup(x, y)
 
             out = self.backbone(x)
-
-            if not self.training:
-                all_logits.append(out[-1])
-
+            all_outs.append(out)
             if has_target:
-                ys = [F.adaptive_max_pool3d(y, o.shape[-3:]) for o in out]
-                loss_values = torch.stack(
-                    [
-                        self.loss_fn(out[i], to_ce_target(ys[i]))[0]
-                        for i in range(len(out))
-                    ]
-                )
-                lvl_weights = self.lvl_weights.to(loss_values.device)
-                weighted_loss = (loss_values * lvl_weights).sum() / lvl_weights.sum()
-                all_losses.append(weighted_loss)
+                ys = F.adaptive_max_pool3d(y, out.shape[-3:])
+                all_ys.append(ys)
 
+        outs = torch.cat(all_outs, dim=0)
         if has_target:
-            outputs["loss"] = torch.stack(all_losses).mean()
+            yss = torch.cat(all_ys, dim=0)
+            outputs["loss"] = self.loss_fn(outs, yss)
+            outputs["dice"] = self.loss_metric(outs, yss)
 
         if not self.training:
-            outputs["logits"] = torch.cat(all_logits, dim=0)
+            outputs["logits"] = outs
             if "location" in batch:
                 outputs["location"] = batch["location"]
             if "scale" in batch:
                 outputs["scale"] = batch["scale"]
             if "id" in batch:
                 outputs["id"] = batch["id"]
-            if "dims" in batch:
-                outputs["dims"] = batch["dims"]
         return outputs

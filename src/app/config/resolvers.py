@@ -23,10 +23,3 @@
 import datetime
 import os
 from zoneinfo import ZoneInfo
-
-
-def root_dir(root: "str", model: "str", seed: "str", fold: "str") -> "str":
-    start_time = datetime.datetime.now(ZoneInfo("Europe/Paris")).strftime(
-        "%Y%m%d-%H%M%S"
-    )
-    return os.path.join(root, model, f"seed_{seed}", f"fold{fold}", f"{start_time}")

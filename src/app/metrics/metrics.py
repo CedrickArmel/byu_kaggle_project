@@ -51,25 +51,24 @@ class BYUFbeta(Metric):
         targets = torch.unique(targets, dim=0)
         preds = get_topk_by_id(preds=preds, targets=targets)
 
-        scores: "list" = []
         fbeta1s: "list" = []
         fbeta2s: "list" = []
-        ths: "NDArray" = np.arange(start=0, stop=self.cfg.max_th, step=0.005)
+        ths: "NDArray" = np.arange(start=0, stop=self.cfg.max_th, step=0.001)
 
         for t in ths:
-            score, fbeta1, fbeta2 = self.score_fn(t=t, preds=preds, targets=targets)
-            scores += [score]
+            fbeta1, fbeta2 = self.score_fn(t=t, preds=preds, targets=targets)
             fbeta1s += [fbeta1]
             fbeta2s += [fbeta2]
 
-        best_idx = int(np.argmax(a=scores))
-        best_th = float(ths[best_idx])
-        best_score = float(scores[best_idx])
+        best_idx = int(np.argmax(a=fbeta1s))
+        fb1_thd = float(ths[best_idx])
         best_fbeta1 = float(fbeta1s[best_idx])
+
+        best_idx = int(np.argmax(a=fbeta2s))
+        fb2_thd = float(ths[best_idx])
         best_fbeta2 = float(fbeta2s[best_idx])
-        return dict(
-            score=best_score, fbeta1=best_fbeta1, fbeta2=best_fbeta2, best_ths=best_th
-        )
+
+        return dict(fbeta1=best_fbeta1, thd1=fb1_thd, fbeta2=best_fbeta2, thd2=fb2_thd)
 
     def score_fn(
         self, t: "float", preds: "torch.Tensor", targets: "torch.Tensor"
@@ -97,9 +96,7 @@ class BYUFbeta(Metric):
             if (prec2 + rec2) > 0
             else 0.0
         )
-
-        score: "float" = (3 * fbeta1 + fbeta2) / 4
-        return score, fbeta1, fbeta2
+        return fbeta1, fbeta2
 
     def compute_candidates_cm_metrics(
         self, candidates: "torch.Tensor", ptargets: "torch.Tensor"

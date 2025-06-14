@@ -20,57 +20,54 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# mypy: disable-error-code="misc, assignment"
+# mypy: ignore-errors
 
-import datetime
-import os
-from zoneinfo import ZoneInfo
 
-import hydra
-from lightning.pytorch.loggers import TensorBoardLogger
-from omegaconf import DictConfig, OmegaConf
+import torch
+from omegaconf import OmegaConf
 
 from app.models import LNet
-from app.trainers import get_lightning_trainer
-from app.utils import get_callbacks, get_data, get_data_loader, get_profiler, set_seed
+from app.utils import get_data, get_data_loader
 
 OmegaConf.register_new_resolver("eval", resolver=eval, replace=True)
 
-
-@hydra.main(config_path="./config", config_name="config")
-def main(cfg: "DictConfig") -> "None":
-    set_seed(cfg.seed)
+if __name__ == "__main__":
+    cfg = OmegaConf.load("src/app/config/config.yaml")
+    cfg.fold = 0
+    cfg.backbone = "resnet10"
+    cfg.backbone_args.pretrained = False
+    cfg.val_persistent_workers = True
     train_df, val_df = get_data(cfg, mode="fit")
     train_loader = get_data_loader(cfg, train_df, mode="train")
     val_loader = get_data_loader(cfg, val_df, mode="validation")
 
-    start_time = datetime.datetime.now(ZoneInfo("Europe/Paris")).strftime(
-        "%Y%m%d%H%M%S"
+    state = torch.load(
+        "/kaggle/working/resnet10/version_33/checkpoints/epoch=4-step=168-val_loss=0.85-fbeta1=0.00-fbeta2=0.82.ckpt",
+        map_location="cpu",
     )
-    save_dir = os.path.join(cfg.output_dir, cfg.backbone, f"seed_{cfg.seed}")
-
-    cfg.default_root_dir = os.path.join(save_dir, f"fold{cfg.fold}", f"{start_time}")
-
-    os.makedirs(cfg.default_root_dir, exist_ok=True)
-    chckpt_cb, lr_cb = get_callbacks(cfg)
+    cfg.virt_eval_sub_batch_size = 8
 
     model = LNet(cfg)
-
-    profiler = get_profiler(cfg)
-    logger = (
-        TensorBoardLogger(save_dir=save_dir, name=f"fold{cfg.fold}")
-        if cfg.logger
-        else cfg.logger
-    )
-    callbacks = [chckpt_cb, lr_cb] if cfg.callbacks else cfg.callbacks
-    trainer = get_lightning_trainer(cfg, logger, callbacks, profiler)
-    trainer.fit(
-        model,
-        train_dataloaders=train_loader,
-        val_dataloaders=val_loader,
-        ckpt_path=cfg.ckpt_path,
-    )
-
-
-if __name__ == "__main__":
-    main()
+    model.load_state_dict(state["state_dict"])
+    tr_it = iter(val_loader)
+    counter = 0
+    for batch in range(len(val_loader)):
+        batch = next(tr_it)
+        if batch["id"][0] not in [16, 38, 200, 422]:
+            continue
+        print(batch["id"][0])
+        b_cuda = {
+            k: v.to("cuda:0") if isinstance(v, torch.Tensor) else v
+            for k, v in batch.items()
+        }
+        model.to("cuda:0")
+        model.eval()
+        with torch.no_grad():
+            output = model(b_cuda)
+        logits = output["logits"]
+        print(output["dice"])
+        logits = logits.cpu().numpy()
+        torch.save(logits, f"/kaggle/working/logits{batch['id'][0]}.pt")
+        counter += 1
+        if counter == 1:
+            break

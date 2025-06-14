@@ -33,6 +33,13 @@ import torch.optim as optim
 from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.profilers import Profiler, PyTorchProfiler, XLAProfiler
 from omegaconf import DictConfig
+from torch.optim.lr_scheduler import (
+    CosineAnnealingLR,
+    CosineAnnealingWarmRestarts,
+    LinearLR,
+    MultiStepLR,
+    SequentialLR,
+)
 from torch.utils.data import DataLoader
 
 from app.data import BYUCustomDataset
@@ -60,6 +67,15 @@ def collate_fn(batch: "list[dict[str, Any]]") -> "dict[str, Any]":
             else torch.stack(batch_data[key])
         )
     return batch_dict
+
+
+def create_milestones(steps: "int", m: "int") -> "list[int]":
+    """returns a list of milestones for the given number of steps and m."""
+    g = int(steps // m)
+    milestones = []
+    for i in range(1, m + 1):
+        milestones += [i] * g
+    return milestones
 
 
 def get_callbacks(cfg: "DictConfig") -> "tuple[Callback, ...]":
@@ -98,8 +114,14 @@ def get_data(cfg: "DictConfig", mode: "str" = "fit") -> "tuple[pd.DataFrame,...]
     """
     if mode not in ["fit", "test"]:
         raise ValueError("mode argument must be one of train, validation or test!")
+    if cfg.manual_overfit:
+        overfit_samples = cfg.overfit_tomos[: cfg.batch_size]
+        df = df = pd.read_csv(cfg.df_path)
+        train_df = df[df.tomo_id.isin(overfit_samples)]
+        val_df = df[df.fold == 0]
+        data = (train_df, val_df)
 
-    if mode == "fit":
+    elif mode == "fit":
         df = pd.read_csv(cfg.df_path)
         if cfg.fold > -1:
             train_df = df[df.fold != cfg.fold]
@@ -109,7 +131,7 @@ def get_data(cfg: "DictConfig", mode: "str" = "fit") -> "tuple[pd.DataFrame,...]
             val_df = df[df.fold == 0]
         data = (train_df, val_df)
 
-    if mode == "test":
+    elif mode == "test":
         test_tomo_id = sorted(
             [
                 path.split("/")[-1]
@@ -147,94 +169,21 @@ def get_data_loader(
     dataset = BYUCustomDataset(cfg, df=df, mode=mode)
     loader = DataLoader(
         dataset=dataset,
-        batch_size=cfg.batch_size if mode == "train" else cfg.batch_size_val,
+        batch_size=cfg.batch_size if mode == "train" else cfg.val_batch_size,
         collate_fn=collate_fn,
         worker_init_fn=seed_worker,
-        num_workers=cfg.num_workers if mode == "train" else cfg.num_val_workers,
-        shuffle=cfg.shuffle if mode == "train" else False,
-        drop_last=True,
+        num_workers=cfg.num_workers if mode == "train" else cfg.val_num_workers,
+        shuffle=cfg.shuffle if mode == "train" else cfg.val_shuffle,
+        drop_last=cfg.drop_last if mode == "train" else cfg.val_drop_last,
+        persistent_workers=(
+            cfg.persistent_workers if mode == "train" else cfg.val_persistent_workers
+        ),
+        prefetch_factor=(
+            cfg.prefetch_factor if mode == "train" else cfg.val_prefetch_factor
+        ),
         generator=g,
     )
     return loader
-
-
-def get_linear_schedule_with_warmup(
-    optimizer: "optim.Optimizer",
-    num_warmup_steps: "int",
-    num_training_steps: "int",
-    end_lambda: "float" = 0.0,
-    last_epoch: "int" = -1,
-) -> "optim.lr_scheduler.LambdaLR":
-    """
-    from https://github.com/huggingface/transformers/blob/main/src/transformers/optimization.py
-    Create a schedule with a learning rate that decreases linearly from the initial lr set in the optimizer to 0, after
-    a warmup period during which it increases linearly from 0 to the initial lr set in the optimizer.
-    Args:
-        optimizer ([`~torch.optim.Optimizer`]):
-            The optimizer for which to schedule the learning rate.
-        num_warmup_steps (`int`):
-            The number of steps for the warmup phase.
-        num_training_steps (`int`):
-            The total number of training steps.
-        end_lambda (`float`):
-            Mutiplicative factor at the end of training.
-        last_epoch (`int`, *optional*, defaults to -1):
-            The index of the last epoch when resuming training.
-    Return:
-        `torch.optim.lr_scheduler.LambdaLR` with the appropriate schedule.
-    """
-
-    def lr_lambda(current_step: int) -> "float":
-        """returns the learning rate multiplier based on the current step."""
-        if current_step < num_warmup_steps:
-            return float(current_step) / float(max(1, num_warmup_steps))
-        return max(
-            end_lambda,
-            float(num_training_steps - current_step)
-            / float(max(1, num_training_steps - num_warmup_steps)),
-        )
-
-    return optim.lr_scheduler.LambdaLR(optimizer, lr_lambda, last_epoch)
-
-
-def get_multistep_schedule_with_warmup(
-    optimizer: "optim.Optimizer",
-    warmup_steps: "int",
-    training_steps: "int",
-    end_lambda: "float" = 1e-3,
-    m: "int" = 10,
-    last_epoch: "int" = -1,
-) -> "optim.lr_scheduler.LambdaLR":
-    """
-    Modified schedule:
-      - Warmup: linearly increases from 0.001% of base LR to 100% of base LR over warmup_steps.
-      - Then, in the non-warmup phase (total_steps - warmup_steps):
-          * LR = base_lr * [(1- n/m) + end_lambda] where:
-              * m: number of milestones
-              * n: step number in [1, m]
-    """
-
-    def create_milestones(steps: "int", m: "int") -> "list[int]":
-        """returns a list of milestones for the given number of steps and m."""
-        g = int(steps // m)
-        milestones = []
-        for i in range(1, m + 1):
-            milestones += [i] * g
-        return milestones
-
-    def lr_lambda(current_step: int) -> "float":
-        """returns the learning rate multiplier based on the current step."""
-        if current_step <= warmup_steps:
-            return 1e-5 + (1.0 - 1e-5) * float(current_step) / float(
-                max(1, warmup_steps)
-            )
-        else:
-            remaining_steps = training_steps - warmup_steps
-            milestones = create_milestones(remaining_steps, m)
-            delta = 1 - (milestones[current_step - warmup_steps] / m)
-        return delta + end_lambda
-
-    return optim.lr_scheduler.LambdaLR(optimizer, lr_lambda, last_epoch)
 
 
 def get_optimizer(cfg: "DictConfig", model: "torch.nn.Module") -> "optim.Optimizer":
@@ -326,67 +275,44 @@ def get_seeded_generator(cfg: "DictConfig") -> "torch.Generator":
 
 
 def get_scheduler(
-    cfg: "DictConfig", optimizer: "optim.Optimizer", total_steps: "int"
+    cfg: "DictConfig", optimizer: "optim.Optimizer", training_steps: "int"
 ) -> "optim.lr_scheduler.LRScheduler":
     """
     Creates and returns a learning rate scheduler based on the provided configuration.
-    Args:
-        cfg (DictConfig): Configuration object containing the scheduler type and its parameters.
-            - cfg.schedule (str): The type of scheduler to use. Options are:
-                - "steplr": StepLR scheduler.
-                - "multistep": MultiStepLR scheduler with warmup.
-                - "linear": Linear scheduler with warmup.
-                - "CosineAnnealingLR": Cosine Annealing scheduler.
-            - cfg.epochs_step (int): Number of epochs per step (used for "steplr").
-            - cfg.batch_size (int): Batch size used in training.
-            - cfg.world_size (int): Number of distributed training processes.
-            - cfg.warmup (int): Number of warmup steps (used for "multistep" and "linear").
-            - cfg.milestones (list[int]): Milestones for MultiStepLR (used for "multistep").
-            - cfg.end_lambda (float): Final lambda value for MultiStepLR (used for "multistep").
-            - cfg.max_epochs (int): Total number of epochs (used for "multistep" and "linear").
-        optimizer (optim.Optimizer): The optimizer for which the scheduler will adjust the learning rate.
-        total_steps (int): Total number of training steps.
     Returns:
-        optim.lr_scheduler.LRScheduler | None: The configured learning rate scheduler, or None if no valid scheduler type is specified.
+        optim.lr_scheduler.LRScheduler: The configured learning rate scheduler..
     """
-    if cfg.schedule == "steplr":
-        scheduler: "optim.lr_scheduler.LRScheduler" = optim.lr_scheduler.StepLR(
-            optimizer,
-            step_size=cfg.epochs_step
-            * (total_steps // cfg.batch_size)
-            // cfg.world_size,
-            gamma=0.5,
+    if cfg.schedule not in ["multistep", "cosine", "cosine_wr"]:
+        raise ValueError(
+            f"Invalid schedule type: {cfg.schedule}. Supported types are 'multistep', 'cosine', 'cosine_wr'."
         )
-    elif cfg.schedule == "multistep":
-        scheduler = get_multistep_schedule_with_warmup(
-            optimizer,
-            warmup_steps=cfg.warmup,
-            m=cfg.milestones,
-            training_steps=cfg.max_epochs
-            * (total_steps // cfg.batch_size)
-            // cfg.world_size,
-            end_lambda=cfg.end_lambda,
+    if cfg.schedule == "multistep":
+        steps: "int" = training_steps - cfg.warmup
+        milestones = range(1, steps, (steps // cfg.milestones))
+        scheduler = MultiStepLR(
+            optimizer=optimizer, milestones=milestones, gamma=cfg.end_lambda
+        )
+    elif cfg.schedule == "cosine":
+        scheduler = CosineAnnealingLR(optimizer=optimizer, **cfg.cosine_args)
+    elif cfg.schedule == "cosine_wr":
+        scheduler = CosineAnnealingWarmRestarts(
+            optimizer=optimizer, **cfg.cosine_wr_args
         )
 
-    elif cfg.schedule == "linear":
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=0,
-            num_training_steps=cfg.max_epochs
-            * (total_steps // cfg.batch_size)
-            // cfg.world_size,
+    if cfg.warmup > 0:
+        warmup_scheduler = LinearLR(optimizer=optimizer, **cfg.linear_args)
+        sequential = SequentialLR(
+            optimizer=optimizer,
+            schedulers=[warmup_scheduler, scheduler],
+            milestones=[cfg.warmup],
         )
-
-    elif cfg.schedule == "CosineAnnealingLR":
-        T_max = int(np.ceil(0.5 * total_steps))
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=T_max, eta_min=1e-8
-        )
-    return scheduler
+    else:
+        sequential = scheduler
+    return sequential
 
 
 def seed_worker(worker_id):
-    worker_seed = np.iinfo(np.uint32).max
+    worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
 
