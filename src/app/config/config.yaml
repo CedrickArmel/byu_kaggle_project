@@ -28,6 +28,7 @@ dataset_args:
     new_size: [288, 480, 480]
     roi_size: [96, 160, 160]
     batch_size: 1
+    n_classes: 2
     ratios: [0, 1]
     reduce_mode: "nearest-exact"
     reduce_align_corners: null
@@ -85,16 +86,6 @@ loss_contributions: [1, 1, 1] # [avg_loss, max_loss, dice_loss]
 weighted_loss: false
 smoothing: 0.0
 
-# Metrics
-byu_metric:
-  compute_on_cpu: true
-  dist_sync_on_step: false
-  process_group: null
-  dist_sync_fn: null
-  distributed_available_fn: null
-  sync_on_compute: true
-  compute_with_cache: true
-  dist_reduce_fx: "cat"
 
 # Metrics
 byu_metric:
@@ -239,7 +230,7 @@ logger: "${eval: not ${barebones} and not ${fast_dev_run}}"
 log_every_n_steps: 2
 model_registry: null
 callbacks: "${eval: True if not ${barebones} and not ${fast_dev_run} else None}"
-check_val_every_n_epoch: null
+check_val_every_n_epoch: "${eval: 1 if not ${val_check_interval} else None}"
 inference_mode: true
 limit_predict_batches: 1.0
 limit_test_batches: 1.0
@@ -263,14 +254,24 @@ fold: 0
 last_score: 0.0
 manual_overfit: false
 overfit_tomos:
-  - "tomo_226cd8"
-  - "tomo_00e463"
-  - "tomo_08bf73"
-  - "tomo_2daaee"
-  - "tomo_e22370"
-  - "tomo_183270"
-  - "tomo_ae347a"
-  - "tomo_1ab322"
+  - tomo_00e047
+  - tomo_00e463
+  - tomo_01a877
+  - tomo_02862f
+  - tomo_033ebe
+  - tomo_03437b
+  - tomo_0363f2
+  - tomo_05df8a
+  - tomo_05f919
+  - tomo_081a2d
+#- "tomo_226cd8"
+#- "tomo_00e463"
+#- "tomo_08bf73"
+#- "tomo_2daaee"
+#- "tomo_e22370"
+#- "tomo_183270"
+#- "tomo_ae347a"
+#- "tomo_1ab322"
 seed: 4294967295
 
 

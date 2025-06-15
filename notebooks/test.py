@@ -23,7 +23,7 @@
 # mypy: ignore-errors
 
 
-import torch
+# import torch
 from omegaconf import OmegaConf
 
 from app.models import LNet
@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     tr_it = iter(val_loader)
     counter = 0
-    for batch in range(len(val_loader)):
+    for batch in range(len(train_loader)):
         batch = next(tr_it)
         if batch["id"][0] == 212:
             continue
@@ -62,14 +62,14 @@ if __name__ == "__main__":
         #    for k, v in batch.items()
         # }
         # model.to("cuda:0")
-        model.eval()
-        with torch.no_grad():
-            output = model(batch)
-        logits = output["logits"]
+        # model.eval()
+        # with torch.no_grad():
+        output = model(batch)
+        # logits = output["logits"]
         print(output["loss"])
-        logits = logits.cpu().numpy()
-        print(logits.shape)
-        torch.save(logits, f"/kaggle/working/logits{batch['id'][0]}.pt")
+        # logits = logits.cpu().numpy()
+        # print(logits.shape)
+        # torch.save(logits, f"/kaggle/working/logits{batch['id'][0]}.pt")
         counter += 1
         if counter == 1:
             break

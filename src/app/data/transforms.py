@@ -32,6 +32,7 @@ def get_transforms(cfg: "DictConfig", transform: "str" = "static") -> "mt.Transf
     roi_size = cfg.dataset_args.transforms.roi_size
     batch_size = cfg.dataset_args.transforms.batch_size
     ratios = cfg.dataset_args.transforms.ratios
+    n_classes = cfg.dataset_args.transforms.n_classes
 
     if transform.lower() == "static":
         compose = mt.Compose(
@@ -51,9 +52,9 @@ def get_transforms(cfg: "DictConfig", transform: "str" = "static") -> "mt.Transf
                     label_key="target",
                     spatial_size=list(roi_size),
                     num_samples=batch_size,
-                    num_classes=2,
+                    num_classes=n_classes,
                     ratios=ratios,
-                    warn=False,
+                    warn=True,
                 )
             ]
         )
