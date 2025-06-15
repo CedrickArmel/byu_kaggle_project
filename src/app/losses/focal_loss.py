@@ -151,7 +151,6 @@ class FocalLoss(_Loss):
                 number of classes.
         """
         n_pred_ch: "int" = input.shape[1]
-        device: "torch.device" = input.device
 
         if self.to_onehot_y:
             if n_pred_ch == 1:
@@ -188,26 +187,24 @@ class FocalLoss(_Loss):
         else:
             loss = sigmoid_focal_loss(input, target, self.gamma, self.alpha)
 
+        class_weight: "torch.Tensor" = self.class_weight
         num_of_classes = target.shape[1]
-        if self.class_weight is not None and num_of_classes != 1:
+
+        if class_weight is not None and num_of_classes != 1:
             # make sure the lengths of weights are equal to the number of classes
-            if self.class_weight.ndim == 0:
-                self.class_weight = torch.as_tensor(
-                    [self.class_weight] * num_of_classes
-                )
+            if class_weight.ndim == 0:
+                class_weight = class_weight.repeat(num_of_classes)
             else:
-                if self.class_weight.shape[0] != num_of_classes:
+                if class_weight.shape[0] != num_of_classes:
                     raise ValueError(
                         """the length of the `weight` sequence should be the same as the number of classes.
                         If `include_background=False`, the weight should not include
                         the background category class 0."""
                     )
-
             # apply class_weight to loss
-            self.class_weight = self.class_weight.to(device)
             broadcast_dims: "list[int]" = [1, num_of_classes] + [1] * (loss.ndim - 2)
-            self.class_weight = self.class_weight.view(broadcast_dims)
-            loss = self.class_weight * loss
+            class_weight = class_weight.view(broadcast_dims)
+            loss = class_weight * loss
 
         loss = loss.mean(dim=list(range(2, target.ndim)))
 

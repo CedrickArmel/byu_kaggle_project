@@ -354,11 +354,15 @@ class Net(nn.Module):  # type: ignore[misc]
             if self.training
             else self.cfg.virt_eval_sub_batch_size
         )
-        full_size = batch["input"].shape[0]
-        outputs = {}
-        all_outs = []
-        all_ys = []
         has_target = "target" in batch
+        full_size = batch["input"].shape[0]
+        device: "torch.device" = batch["input"].device
+
+        target: "torch.Tensor" = torch.empty(
+            0, device=device
+        )  # better than empty list because of XLA compilation performance
+        all_outs = []
+        outputs = {}
 
         for i in range(0, full_size, bs if bs != -1 else full_size):
             x: "torch.Tensor " = batch["input"][i : i + bs].float()
@@ -366,44 +370,39 @@ class Net(nn.Module):  # type: ignore[misc]
                 batch["target"][i : i + bs].float() if has_target else None
             )
 
-            if self.training:
+            if self.training:  # we assume a target is always present during training
                 outs: "list[torch.Tensor]" = self.backbone(x)
                 logits: "torch.Tensor" = outs[-1]
                 all_outs.append(outs)
-                ys: "torch.Tensor" = F.adaptive_max_pool3d(y, logits.shape[-3:])
-                all_ys.append(ys)
-
+                y = F.adaptive_max_pool3d(y, logits.shape[-3:])
+                target = torch.cat([target, y], dim=0)
             else:
                 with torch.no_grad():
                     outs = self.backbone(x)
                     logits = outs[-1]
                     all_outs.append(logits)
                     if has_target:
-                        ys = F.adaptive_max_pool3d(y, logits.shape[-3:])
-                        all_ys.append(ys)
-
-        yss: "torch.Tensor | None" = torch.cat(all_ys, dim=0) if has_target else None
+                        y = F.adaptive_max_pool3d(y, logits.shape[-3:])
+                        target = torch.cat([target, y], dim=0)
 
         if self.training:
             outs = [
                 torch.cat([out[i] for out in all_outs]) for i in range(len(all_outs[0]))
             ]
             logits = outs[-1]
-            loss = self.loss_fn(logits, yss)
-
-            loss_contributions: "torch.Tensor" = self.loss_contributions.to(
-                logits.device
-            )
-            loss = loss_contributions[-1] * self.loss_fn(logits, yss)
+            loss_contributions: "torch.Tensor" = self.loss_contributions.to(device)
+            loss = loss_contributions[-1] * self.loss_fn(logits, target)
             x_aux: "torch.Tensor" = F.max_pool3d(
                 logits, **self.cfg.max_loss_pooling_args
             )
-            y_aux: "torch.Tensor" = F.max_pool3d(yss, **self.cfg.max_loss_pooling_args)
+            y_aux: "torch.Tensor" = F.max_pool3d(
+                target, **self.cfg.max_loss_pooling_args
+            )
             loss += loss_contributions[-2] * self.max_loss_fn(x_aux, y_aux)
 
             if self.cfg.deep_supervision:
                 x_aux = outs[-2]
-                y_aux = F.avg_pool3d(yss, **self.cfg.avg_loss_pooling_args)
+                y_aux = F.avg_pool3d(target, **self.cfg.avg_loss_pooling_args)
                 loss += loss_contributions[-3] * self.avg_loss_fn(x_aux, y_aux)
 
             if self.cfg.weighted_loss:
@@ -414,12 +413,11 @@ class Net(nn.Module):  # type: ignore[misc]
                 # For inference, we concatenate all outputs
                 logits = torch.cat(all_outs, dim=0)
                 if has_target:
-                    loss = self.loss_fn(logits, yss)
+                    loss = self.loss_fn(logits, target)
 
-        outs = torch.cat(all_outs, dim=0)
         if has_target:
             outputs["loss"] = loss
-            outputs["dice"] = self.dice_fn(logits, yss).squeeze().mean(dim=0)
+            outputs["dice"] = self.dice_fn(logits, target).squeeze().mean(dim=0)
 
         if not self.training:
             outputs["logits"] = logits
