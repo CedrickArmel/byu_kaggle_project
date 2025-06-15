@@ -25,6 +25,7 @@ import random
 from collections import defaultdict
 from glob import glob
 from typing import Any
+from warnings import warn
 
 import numpy as np
 import pandas as pd
@@ -41,9 +42,11 @@ from torch.nn.init import (
     xavier_uniform_,
 )
 from torch.optim.lr_scheduler import (
+    ConstantLR,
     CosineAnnealingLR,
     CosineAnnealingWarmRestarts,
     LinearLR,
+    LRScheduler,
     MultiStepLR,
     SequentialLR,
 )
@@ -257,15 +260,15 @@ def get_seeded_generator(cfg: "DictConfig") -> "torch.Generator":
 
 def get_scheduler(
     cfg: "DictConfig", optimizer: "optim.Optimizer", training_steps: "int"
-) -> "optim.lr_scheduler.LRScheduler":
+) -> "LRScheduler | None":
     """
     Creates and returns a learning rate scheduler based on the provided configuration.
     Returns:
-        optim.lr_scheduler.LRScheduler: The configured learning rate scheduler..
+        LRScheduler: The configured learning rate scheduler or None if no valid scheduler is specified.
     """
-    if cfg.schedule not in ["multistep", "cosine", "cosine_wr"]:
+    if cfg.schedule not in ["multistep", "cosine", "cosine_wr", "constant", "none"]:
         raise ValueError(
-            f"Invalid schedule type: {cfg.schedule}. Supported types are 'multistep', 'cosine', 'cosine_wr'."
+            f"Invalid schedule type: {cfg.schedule}. Supported types are 'multistep', 'cosine', 'cosine_wr', 'constant', 'none'."
         )
     if cfg.schedule == "multistep":
         steps: "int" = training_steps - cfg.warmup
@@ -279,14 +282,35 @@ def get_scheduler(
         scheduler = CosineAnnealingWarmRestarts(
             optimizer=optimizer, **cfg.cosine_wr_args
         )
+    elif cfg.schedule == "constant":
+        scheduler = ConstantLR(optimizer=optimizer, **cfg.constant_args)
+    elif cfg.schedule == "none":
+        if cfg.warmup > 0:
+            warn(
+                "Warmup is set to a value greater than 0, but `none` is provided as schedule type."
+                "Considering only the linear warmup phase. Set `warmup` to 0 to disable it."
+            )
+        scheduler = None
+
+    else:
+        if cfg.warmup > 0:
+            warn(
+                "Warmup is set to a value greater than 0, but an unsupported schedule"
+                f"type: {cfg.schedule} is provided by user."
+                "Considering only the linear warmup phase. Set `warmup` to 0 to disable it."
+            )
+        scheduler = None
 
     if cfg.warmup > 0:
         warmup_scheduler = LinearLR(optimizer=optimizer, **cfg.linear_args)
-        sequential = SequentialLR(
-            optimizer=optimizer,
-            schedulers=[warmup_scheduler, scheduler],
-            milestones=[cfg.warmup],
-        )
+        if scheduler is None:
+            sequential: "LinearLR" = warmup_scheduler
+        else:
+            sequential = SequentialLR(
+                optimizer=optimizer,
+                schedulers=[warmup_scheduler, scheduler],
+                milestones=[cfg.warmup],
+            )
     else:
         sequential = scheduler
     return sequential

@@ -21,7 +21,6 @@
 # SOFTWARE.
 
 import os
-from collections import Counter
 from typing import Any
 
 import lightning.pytorch as L
@@ -90,14 +89,18 @@ class LNet(L.LightningModule):
     def configure_optimizers(self) -> "dict[str, Any] | Optimizer":
         """Return the optimizer and an optionnal lr_scheduler"""
         optimizer: "Optimizer" = get_optimizer(self.cfg, self.model)
-        scheduler: "LRScheduler" = get_scheduler(
+        scheduler: "LRScheduler | None" = get_scheduler(
             cfg=self.cfg, optimizer=optimizer, training_steps=self.training_steps
         )
-        return dict(
-            optimizer=optimizer,
-            lr_scheduler=dict(
-                scheduler=scheduler, interval="step", frequency=1, name="lr"
-            ),
+        return (
+            dict(
+                optimizer=optimizer,
+                lr_scheduler=dict(
+                    scheduler=scheduler, interval="step", frequency=1, name="lr"
+                ),
+            )
+            if scheduler is not None
+            else optimizer
         )
 
     def training_step(
