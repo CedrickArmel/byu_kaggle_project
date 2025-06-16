@@ -107,7 +107,7 @@ def get_data(cfg: "DictConfig", mode: "str" = "fit") -> "tuple[pd.DataFrame,...]
     if mode not in ["fit", "test"]:
         raise ValueError("mode argument must be one of train, validation or test!")
     if cfg.manual_overfit:
-        overfit_samples = cfg.overfit_tomos[: cfg.batch_size]
+        overfit_samples = cfg.overfit_tomos[: cfg.dataloader_args.train.batch_size]
         df = df = pd.read_csv(cfg.df_path)
         train_df = df[df.tomo_id.isin(overfit_samples)]
         val_df = df[df.fold == 0]
