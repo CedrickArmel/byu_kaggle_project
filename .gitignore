@@ -4,6 +4,9 @@ conf/local/*
 data/*
 outputs/
 .vscode/
+notebooks/
+
+!notebooks/[0-9][0-9]_cay_*.ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

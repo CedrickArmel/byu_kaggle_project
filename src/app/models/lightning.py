@@ -108,10 +108,11 @@ class LNet(L.LightningModule):
     ) -> "torch.Tensor":
         output_dict = self(batch)
         loss: "torch.Tensor" = output_dict["loss"]
+        dice: "torch.Tensor" = output_dict["dice"].mean(dim=0).squeeze()
         log_dict: "dict[str, torch.Tensor]" = dict(
             train_loss=loss,
-            train_bg_dice=output_dict["dice"][0],
-            train_fg_dice=output_dict["dice"][1],
+            train_bg_dice=dice[0],
+            train_fg_dice=dice[1],
         )
         self.log_dict(
             log_dict,
@@ -149,11 +150,12 @@ class LNet(L.LightningModule):
         zyx = batch["zyx"]
         output_dict = self(batch)
         loss: "torch.Tensor" = output_dict["loss"]
+        dice: "torch.Tensor" = output_dict["dice"].mean(dim=0).squeeze()
         preds: "torch.Tensor" = post_process_pipeline(self.cfg, output_dict)
         log_dict: "dict[str, torch.Tensor]" = dict(
             val_loss=loss,
-            val_bg_dice=output_dict["dice"][0],
-            val_fg_dice=output_dict["dice"][1],
+            val_bg_dice=dice[0],
+            val_fg_dice=dice[1],
         )
         self.validation_step_outputs.append(preds)
         self.score_metric.update(preds, zyx)

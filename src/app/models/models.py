@@ -365,9 +365,13 @@ class Net(nn.Module):  # type: ignore[misc]
         outputs = {}
 
         for i in range(0, full_size, bs if bs != -1 else full_size):
-            x: "torch.Tensor " = batch["input"][i : i + bs].float()
+            x: "torch.Tensor " = batch["input"][
+                i : i + (bs if bs != -1 else full_size)
+            ].float()
             y: "torch.Tensor | None" = (
-                batch["target"][i : i + bs].float() if has_target else None
+                batch["target"][i : i + (bs if bs != -1 else full_size)].float()
+                if has_target
+                else None
             )
 
             if self.training:  # we assume a target is always present during training
@@ -417,7 +421,8 @@ class Net(nn.Module):  # type: ignore[misc]
 
         if has_target:
             outputs["loss"] = loss
-            outputs["dice"] = self.dice_fn(logits, target).squeeze().mean(dim=0)
+            with torch.no_grad():
+                outputs["dice"] = self.dice_fn(logits, target)
 
         if not self.training:
             outputs["logits"] = logits
