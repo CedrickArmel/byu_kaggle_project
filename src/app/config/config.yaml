@@ -2,15 +2,15 @@
 
 callbacks_args:
   checkpoint:
-    filename: "{epoch}-{step}-{val_loss:.2f}-{fbeta1:.2f}-{fbeta2:.2f}"
-    monitor: train_loss
+    filename: "{epoch}-{step}-{train_loss:.2e}-{val_loss:.2e}-{train_fg_dice:.2e}"  #{fbeta1:.2f}-{fbeta2:.2f}"
+    monitor: train_fg_dice
     verbose: false
     save_last: true
     save_top_k: 3
     mode: min
     auto_insert_metric_name: true
     save_weights_only: false
-    every_n_train_steps: 0  # x to deactivate
+    every_n_train_steps: null  # x to deactivate
     train_time_interval: null
     every_n_epochs: "${eval: 1 if not ${callbacks_args.checkpoint.every_n_train_steps} and not ${callbacks_args.checkpoint.train_time_interval} else None}"
     save_on_train_epoch_end: false
@@ -33,18 +33,18 @@ dataset_args:
     reduce_mode: "nearest-exact"
     reduce_align_corners: null
   train:
-    sub_epochs: 1
+    sub_epochs: 8
   eval:
     sub_epochs: 1
 
 dataloader_args:
   train:
-    batch_size: 1
+    batch_size: 2
     num_workers: 2
     shuffle: true
     drop_last: true
-    persistent_workers: false
-    prefetch_factor: 2
+    persistent_workers: true
+    prefetch_factor: 16
     pin_memory: false
   eval:
     batch_size: 1
@@ -52,7 +52,7 @@ dataloader_args:
     shuffle: false
     drop_last: true
     persistent_workers: false
-    prefetch_factor: 2
+    prefetch_factor: 8
     pin_memory: false
 
 # Metrics
@@ -186,15 +186,15 @@ warmup: 100
 restart_scheduler: true
 cosine_args:
   T_max: 100
-  eta_min: 1e-5
+  eta_min: 1e-3
   last_epoch: -1
 cosine_wr_args:
   T_0: 50
   T_mult: 1
-  eta_min: 1e-5
+  eta_min: 1e-3
   last_epoch: -1
 linear_args:
-  start_factor: 1e-05
+  start_factor: 1e-03
   end_factor: 1.0
   total_iters: "${warmup}"
 
@@ -241,7 +241,7 @@ min_epochs: null
 max_steps: -1
 max_time: null
 min_steps: null
-val_check_interval: 96
+val_check_interval: null
 deterministic: "warn"
 # Fit
 ckpt_path: null

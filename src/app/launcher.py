@@ -62,6 +62,17 @@ def main(cfg: "DictConfig") -> "None":
         if cfg.logger
         else cfg.logger
     )
+    if logger is not None:
+        print(
+            "logger root_dir :",
+            logger.root_dir,
+            "\nlogger save_dir :",
+            logger.save_dir,
+            "\nlogger log_dir :",
+            logger.log_dir,
+        )
+    else:
+        print("Logger is None !")
     callbacks = [chckpt_cb, lr_cb] if cfg.callbacks else cfg.callbacks
     trainer = get_lightning_trainer(cfg, logger, callbacks, profiler)
     trainer.fit(
